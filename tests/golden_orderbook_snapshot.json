@@ -1,0 +1,9 @@
+EXPECTED = {
+  "events": 10000,
+  "best_bid:": 7558750000000,
+  "best_ask:": 7559000000000,
+  "bid_volume:": 6538,
+  "ask_volume:": 4539,
+  "order_count": 5130,
+  "trade_count:": 192
+}
