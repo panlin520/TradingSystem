@@ -95,7 +95,6 @@ Trading Engine V2.1
                        Portfolio
 
 
-
 ============================================================
 
 
@@ -108,11 +107,11 @@ Trading Engine V2.1
     LIVE
 
 
-
 ============================================================
 
 
 核心原则：
+
 
 1.
 
@@ -121,9 +120,11 @@ Trading Engine V2.1
 
 2.
 
-只有 F_LAST:
+只有 F_LAST：
 
     Strategy
+
+    Signal
 
     Risk
 
@@ -134,6 +135,28 @@ Trading Engine V2.1
 允许读取稳定市场状态。
 
 
+3.
+
+Risk / Execution 的 MarketEvent Hook：
+
+    on_event()
+
+是可选接口。
+
+
+Risk 的核心职责仍然是：
+
+    Signal
+      ↓
+    check_signal()
+
+
+Execution 的核心职责仍然是：
+
+    Order
+      ↓
+    submit()
+
 
 ============================================================
 
@@ -142,7 +165,7 @@ Trading Engine V2.1
 
 from enum import Enum
 
-from typing import Any, Optional
+from typing import Any
 
 
 
@@ -152,9 +175,12 @@ from core.clock import (
 )
 
 
+
 from core.state import (
     SystemState,
 )
+
+
 
 
 
@@ -168,12 +194,14 @@ F_LAST = 128
 
 
 
+
 # ============================================================
 # Engine Mode
 # ============================================================
 
 
 class EngineMode(Enum):
+
 
     BACKTEST = "BACKTEST"
 
@@ -218,6 +246,52 @@ class TradingEngine:
 
         状态管理
 
+
+    ========================================================
+
+
+    Runtime 数据流：
+
+
+        Feed
+          ↓
+        MarketEvent
+          ↓
+        Clock
+          ↓
+        State
+          ↓
+        OrderBook
+
+
+    每一条 raw MBO：
+
+        都必须经过以上流程。
+
+
+    ========================================================
+
+
+    F_LAST：
+
+        MarketEvent
+            ↓
+        Strategy
+            ↓
+        Signal
+            ↓
+        Risk
+            ↓
+        Order
+            ↓
+        Execution
+            ↓
+        Fill
+            ↓
+        Portfolio
+
+
+    ========================================================
     """
 
 
@@ -238,7 +312,7 @@ class TradingEngine:
 
         execution=None,
 
-        portfolio=None
+        portfolio=None,
 
     ):
 
@@ -248,6 +322,7 @@ class TradingEngine:
         # ==================================================
 
         self.mode = mode
+
 
 
 
@@ -271,6 +346,7 @@ class TradingEngine:
 
 
 
+
         # ==================================================
         # Clock
         # ==================================================
@@ -288,6 +364,7 @@ class TradingEngine:
 
 
 
+
         # ==================================================
         # State
         # ==================================================
@@ -300,8 +377,9 @@ class TradingEngine:
 
 
 
-
-        # 注入共享状态
+        # ==================================================
+        # Shared State Injection
+        # ==================================================
 
         self.state.set_orderbook(
 
@@ -319,11 +397,13 @@ class TradingEngine:
 
 
 
+
         # ==================================================
         # Runtime
         # ==================================================
 
         self.running = False
+
 
 
 
@@ -335,6 +415,7 @@ class TradingEngine:
         self.processed_events = 0
 
         self.stable_events = 0
+
 
 
 
@@ -358,6 +439,7 @@ class TradingEngine:
         self.fill_count = 0
 
 
+
         self.risk_reject_count = 0
 
         self.execution_fail_count = 0
@@ -365,8 +447,9 @@ class TradingEngine:
 
 
 
+
         # ==================================================
-        # Lifecycle
+        # Lifecycle State
         # ==================================================
 
         self.last_event = None
@@ -376,6 +459,8 @@ class TradingEngine:
         self.last_order = None
 
         self.last_fill = None
+
+
 
 
 
@@ -390,6 +475,17 @@ class TradingEngine:
         event: Any
 
     ) -> bool:
+        """
+        判断 MarketEvent 是否包含 F_LAST。
+
+
+        Databento：
+
+            F_LAST = 0x80
+
+
+        当前方法保留作为通用静态接口。
+        """
 
 
         flags = getattr(
@@ -412,41 +508,62 @@ class TradingEngine:
             return False
 
 
-
         return bool(
 
-            flags & F_LAST
+            flags
+
+            &
+
+            F_LAST
 
         )
 
-    def _is_last(self, event):
+
+
+
+
+    def _is_last(
+
+        self,
+
+        event,
+
+    ) -> bool:
         """
         判断当前 MBO event 是否为交易周期最后事件。
 
-        Databento MBO:
-            flags 包含 F_LAST 表示
+
+        Databento MBO：
+
+            flags 包含 F_LAST
+
+        表示：
+
             当前事件组结束。
 
-        只有 F_LAST 才向上层发送:
-            Strategy
-            Risk
-            Execution
-            Portfolio
 
-        OrderBook:
-            所有事件都处理。
+        只有 F_LAST 才允许向上层读取稳定状态。
+
+
+        OrderBook：
+
+            所有 raw event 都处理。
         """
+
 
         try:
 
             flags = event.flags
 
 
-            # Databento flag:
-            # F_LAST = 0x80
-
             return bool(
-                flags & 0x80
+
+                flags
+
+                &
+
+                F_LAST
+
             )
 
 
@@ -456,12 +573,17 @@ class TradingEngine:
 
 
 
+
+
     # ========================================================
     # Start
     # ========================================================
 
 
     def start(self):
+        """
+        启动 TradingEngine。
+        """
 
 
         self.running = True
@@ -469,6 +591,7 @@ class TradingEngine:
 
 
         if self.strategy:
+
 
             if hasattr(
 
@@ -478,11 +601,14 @@ class TradingEngine:
 
             ):
 
+
                 self.strategy.on_start(
 
                     self.state
 
                 )
+
+
 
 
 
@@ -492,6 +618,9 @@ class TradingEngine:
 
 
     def stop(self):
+        """
+        停止 TradingEngine。
+        """
 
 
         self.running = False
@@ -499,6 +628,7 @@ class TradingEngine:
 
 
         if self.strategy:
+
 
             if hasattr(
 
@@ -508,6 +638,7 @@ class TradingEngine:
 
             ):
 
+
                 self.strategy.on_stop(
 
                     self.state
@@ -516,28 +647,68 @@ class TradingEngine:
 
 
 
+
+
     # ========================================================
     # Strategy Adapter
     # ========================================================
 
+
     def _generate_signal(
-            self,
-            event
+
+        self,
+
+        event,
+
     ):
+        """
+        Strategy Signal Adapter。
 
-        if self.strategy is None:
-            return None
 
-        if hasattr(
-                self.strategy,
-                "generate_signal"
-        ):
-            return self.strategy.generate_signal(
+        当前 Engine 使用：
+
+            strategy.generate_signal(
                 event,
-                self.state
+                state
             )
 
+
+        如果 Strategy 不提供该接口：
+
+            返回 None。
+        """
+
+
+        if self.strategy is None:
+
+            return None
+
+
+
+        if hasattr(
+
+            self.strategy,
+
+            "generate_signal"
+
+        ):
+
+
+            return self.strategy.generate_signal(
+
+                event,
+
+                self.state
+
+            )
+
+
+
         return None
+
+
+
+
 
     # ========================================================
     # Signal Pipeline
@@ -548,14 +719,46 @@ class TradingEngine:
 
         self,
 
-        signal
+        signal,
 
     ):
+        """
+        Signal 完整交易处理链。
+
+
+        Signal
+
+            ↓
+
+        Risk
+
+            ↓
+
+        Order
+
+            ↓
+
+        Execution
+
+            ↓
+
+        Fill
+
+            ↓
+
+        Portfolio
+
+            ↓
+
+        Risk Exposure Update
+        """
 
 
         if signal is None:
 
             return None
+
+
 
 
 
@@ -574,6 +777,7 @@ class TradingEngine:
 
 
         self.signal_count += 1
+
 
 
 
@@ -605,6 +809,7 @@ class TradingEngine:
 
 
 
+
         # ==================================================
         # Create Order
         # ==================================================
@@ -619,7 +824,7 @@ class TradingEngine:
 
             side=signal.side,
 
-            quantity=signal.quantity
+            quantity=signal.quantity,
 
         )
 
@@ -640,6 +845,7 @@ class TradingEngine:
 
 
 
+
         # ==================================================
         # Execution
         # ==================================================
@@ -647,6 +853,7 @@ class TradingEngine:
         if self.execution is None:
 
             return None
+
 
 
 
@@ -674,9 +881,11 @@ class TradingEngine:
 
 
 
+
         if fill is None:
 
             return None
+
 
 
 
@@ -700,6 +909,7 @@ class TradingEngine:
 
 
 
+
         # ==================================================
         # Portfolio Update
         # ==================================================
@@ -715,8 +925,23 @@ class TradingEngine:
 
 
 
+
+
         # ==================================================
         # Risk Exposure Update
+        # ==================================================
+        #
+        # RiskManagerV2 当前真实接口：
+        #
+        #     on_fill(
+        #         fill,
+        #         portfolio
+        #     )
+        #
+        # Position 实际变化仍然由 Portfolio 负责。
+        #
+        # Risk 这里只刷新 Exposure 状态。
+        #
         # ==================================================
 
         if self.risk:
@@ -730,16 +955,20 @@ class TradingEngine:
 
             ):
 
+
                 self.risk.on_fill(
 
-                    fill
+                    fill,
+
+                    self.portfolio
 
                 )
 
 
 
-        return fill
 
+
+        return fill
 
 
 
@@ -754,16 +983,16 @@ class TradingEngine:
 
         self,
 
-        event: Any
+        event: Any,
 
     ):
-
-
         """
         单个 MarketEvent 处理。
 
 
-        所有 MBO:
+        ====================================================
+
+        所有 MBO raw record：
 
             Clock
 
@@ -771,10 +1000,20 @@ class TradingEngine:
 
             OrderBook
 
+            processed_events
 
-        只有 F_LAST:
 
-            Strategy
+        ====================================================
+
+        只有 F_LAST：
+
+            Strategy Market Hook
+
+            Optional Risk Market Hook
+
+            Optional Execution Market Hook
+
+            Strategy.generate_signal()
 
             Risk
 
@@ -783,8 +1022,8 @@ class TradingEngine:
             Portfolio
 
 
+        ====================================================
         """
-
 
 
         if not self.running:
@@ -796,6 +1035,7 @@ class TradingEngine:
 
 
         self.last_event = event
+
 
 
 
@@ -814,6 +1054,7 @@ class TradingEngine:
 
 
 
+
         # ==================================================
         # 2.
         # State Update
@@ -824,6 +1065,7 @@ class TradingEngine:
             event
 
         )
+
 
 
 
@@ -845,6 +1087,7 @@ class TradingEngine:
 
 
 
+
         # ==================================================
         # 4.
         # Raw Counter
@@ -855,55 +1098,171 @@ class TradingEngine:
 
 
 
+
         # ==================================================
         # 5.
         # Wait F_LAST
         # ==================================================
 
-        if self._is_last(event):
+        if not self._is_last(
 
-            if self.strategy:
-                self.strategy.on_market_event(
-                    event,
-                    self.state
-                )
+            event
 
-            if self.risk:
-                self.risk.on_event(
-                    event,
-                    self.state
-                )
+        ):
 
-            if self.execution:
-                self.execution.on_event(
-                    event,
-                    self.state
-                )
+            return
 
 
 
+
+
+        # ==================================================
+        # Stable Event Counter
+        # ==================================================
 
         self.stable_events += 1
 
+
+
+
+
         # ==================================================
         # 6.
-        # Strategy + Trading Pipeline
-        #
-        # ONLY F_LAST
+        # Strategy Market Event
         # ==================================================
 
-        if self._is_last(event):
-            signal = self._generate_signal(
+        if self.strategy:
 
-                event
 
-            )
+            if hasattr(
 
-            self._process_signal(
+                self.strategy,
 
-                signal
+                "on_market_event"
 
-            )
+            ):
+
+
+                self.strategy.on_market_event(
+
+                    event,
+
+                    self.state
+
+                )
+
+
+
+
+
+        # ==================================================
+        # 7.
+        # Optional Risk Market Event Hook
+        # ==================================================
+        #
+        # RiskManagerV2 当前不要求 on_event()。
+        #
+        # 这里保留 Optional Hook，
+        # 方便未来：
+        #
+        #     real-time exposure monitoring
+        #     market halt
+        #     volatility kill switch
+        #     stale market detection
+        #
+        # ==================================================
+
+        if self.risk:
+
+
+            if hasattr(
+
+                self.risk,
+
+                "on_event"
+
+            ):
+
+
+                self.risk.on_event(
+
+                    event,
+
+                    self.state
+
+                )
+
+
+
+
+
+        # ==================================================
+        # 8.
+        # Optional Execution Market Event Hook
+        # ==================================================
+        #
+        # ExecutionEngine 当前核心入口：
+        #
+        #     submit(order, state)
+        #
+        # 不强制要求：
+        #
+        #     on_event()
+        #
+        # 未来 L3 Matching / Queue Position
+        # 可以实现该 Hook。
+        #
+        # ==================================================
+
+        if self.execution:
+
+
+            if hasattr(
+
+                self.execution,
+
+                "on_event"
+
+            ):
+
+
+                self.execution.on_event(
+
+                    event,
+
+                    self.state
+
+                )
+
+
+
+
+
+        # ==================================================
+        # 9.
+        # Strategy Signal
+        # ==================================================
+
+        signal = self._generate_signal(
+
+            event
+
+        )
+
+
+
+
+
+        # ==================================================
+        # 10.
+        # Trading Pipeline
+        # ==================================================
+
+        self._process_signal(
+
+            signal
+
+        )
 
 
 
@@ -918,11 +1277,9 @@ class TradingEngine:
 
         self,
 
-        fill
+        fill,
 
     ):
-
-
         """
         外部 Execution 回调。
 
@@ -934,13 +1291,31 @@ class TradingEngine:
             Async Execution
 
 
-        """
+        ====================================================
 
+        注意：
+
+        当前同步 BACKTEST 流程：
+
+            _process_signal()
+
+        会直接收到 Execution.submit() 返回的 Fill。
+
+
+        本接口主要保留给：
+
+            LIVE
+            async execution
+
+        ====================================================
+        """
 
 
         if fill is None:
 
             return
+
+
 
 
 
@@ -959,6 +1334,11 @@ class TradingEngine:
 
 
 
+
+        # ==================================================
+        # Portfolio
+        # ==================================================
+
         if self.portfolio:
 
 
@@ -969,6 +1349,12 @@ class TradingEngine:
             )
 
 
+
+
+
+        # ==================================================
+        # Risk
+        # ==================================================
 
         if self.risk:
 
@@ -981,12 +1367,14 @@ class TradingEngine:
 
             ):
 
+
                 self.risk.on_fill(
 
-                    fill
+                    fill,
+
+                    self.portfolio
 
                 )
-
 
 
 
@@ -1001,9 +1389,20 @@ class TradingEngine:
 
         self,
 
-        feed=None
+        feed=None,
 
     ):
+        """
+        Engine 主事件循环。
+
+
+        feed 必须是 iterable：
+
+
+            for event in feed:
+
+                self.on_event(event)
+        """
 
 
         if feed is not None:
@@ -1012,7 +1411,10 @@ class TradingEngine:
 
 
 
+
+
         if self.feed is None:
+
 
             raise ValueError(
 
@@ -1022,7 +1424,11 @@ class TradingEngine:
 
 
 
+
+
         self.start()
+
+
 
 
 
@@ -1037,12 +1443,13 @@ class TradingEngine:
                     break
 
 
-
                 self.on_event(
 
                     event
 
                 )
+
+
 
 
 
@@ -1057,10 +1464,16 @@ class TradingEngine:
 
 
 
+
+
         finally:
 
 
             self.stop()
+
+
+
+
 
     # ========================================================
     # Progress
@@ -1069,9 +1482,12 @@ class TradingEngine:
 
     def progress(
 
-        self
+        self,
 
     ):
+        """
+        返回 Engine Runtime 统计。
+        """
 
 
         return {
@@ -1126,6 +1542,7 @@ class TradingEngine:
 
 
 
+
     # ========================================================
     # Snapshot
     # ========================================================
@@ -1133,11 +1550,9 @@ class TradingEngine:
 
     def snapshot(
 
-        self
+        self,
 
     ):
-
-
         """
         系统状态快照。
 
@@ -1150,6 +1565,7 @@ class TradingEngine:
 
             Monitoring
 
+            Backtest Diagnostics
         """
 
 
@@ -1177,7 +1593,6 @@ class TradingEngine:
                 "stable_events":
 
                     self.stable_events,
-
 
             },
 
@@ -1209,7 +1624,6 @@ class TradingEngine:
 
                     self.execution_fail_count,
 
-
             },
 
 
@@ -1235,12 +1649,17 @@ class TradingEngine:
 
                     self.last_fill,
 
-
             }
 
         }
 
 
+
+
+
+        # ==================================================
+        # Portfolio Snapshot
+        # ==================================================
 
         if self.portfolio:
 
@@ -1262,6 +1681,12 @@ class TradingEngine:
 
 
 
+
+
+        # ==================================================
+        # Risk Snapshot
+        # ==================================================
+
         if self.risk:
 
 
@@ -1282,6 +1707,8 @@ class TradingEngine:
 
 
 
+
+
         return data
 
 
@@ -1295,9 +1722,12 @@ class TradingEngine:
 
     def diagnostic(
 
-        self
+        self,
 
     ):
+        """
+        输出 Engine Runtime 状态。
+        """
 
 
         print(
@@ -1322,14 +1752,18 @@ class TradingEngine:
 
 
 
+
+
         for key, value in self.progress().items():
 
 
             print(
 
-                f"{key:<25}: {value}"
+                f"{key}: {value}"
 
             )
+
+
 
 
 
@@ -1343,161 +1777,17 @@ class TradingEngine:
 
 
 
-
-    # ========================================================
-    # Reset
-    # ========================================================
-
-
-    def reset(
-
-        self
-
-    ):
-
-
-        """
-        重置交易引擎。
-
-
-        用于：
-
-            Backtest 参数优化
-
-            Strategy Replay
-
-        """
-
-
-
-        self.running = False
-
-
-
-        self.processed_events = 0
-
-        self.stable_events = 0
-
-
-
-        self.signal_count = 0
-
-        self.order_count = 0
-
-        self.fill_count = 0
-
-
-
-        self.risk_reject_count = 0
-
-        self.execution_fail_count = 0
-
-
-
-
-        self.signals.clear()
-
-        self.orders.clear()
-
-        self.fills.clear()
-
-
-
-
-        self.last_event = None
-
-        self.last_signal = None
-
-        self.last_order = None
-
-        self.last_fill = None
-
-
-
-
-
-        if self.clock:
-
-
-            self.clock.reset()
-
-
-
-
-        if self.state:
-
-
-            self.state.reset()
-
-
-
-
-        if self.orderbook:
-
-
-            if hasattr(
-
-                self.orderbook,
-
-                "clear"
-
-            ):
-
-
-                self.orderbook.clear()
-
-
-
-
-        if self.portfolio:
-
-
-            if hasattr(
-
-                self.portfolio,
-
-                "reset"
-
-            ):
-
-
-                self.portfolio.reset()
-
-
-
-
-        if self.risk:
-
-
-            if hasattr(
-
-                self.risk,
-
-                "reset"
-
-            ):
-
-
-                self.risk.reset()
-
-
-
-
     # ========================================================
     # Representation
     # ========================================================
 
 
-    def __repr__(
-
-        self
-
-    ):
+    def __repr__(self):
 
 
         return (
 
-            f"<TradingEngine "
+            "<TradingEngine "
 
             f"mode={self.mode.value} "
 
