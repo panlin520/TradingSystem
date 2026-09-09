@@ -501,8 +501,7 @@ class ContextBuilder:
                 ctx.kill_switch = state.get(
                     "kill_switch",
                     False
-                )   #666666666
-
+                )
 
 
         return ctx
