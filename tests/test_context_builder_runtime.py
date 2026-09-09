@@ -46,6 +46,8 @@ from strategy.context import StrategyContext
 
 
 
+
+
 class FakeOrderBook:
     """
     最小 OrderBook Mock
@@ -139,6 +141,7 @@ def test_context_builder_can_initialize():
 
 
 
+
 def test_context_builder_build_strategy_context():
 
 
@@ -170,8 +173,6 @@ def test_context_builder_build_strategy_context():
 
         trade_imbalance=0.2,
 
-        volatility=0.8,
-
     )
 
 
@@ -193,8 +194,11 @@ def test_context_builder_build_strategy_context():
 
 
     assert isinstance(
+
         context,
+
         StrategyContext
+
     )
 
 
@@ -219,7 +223,9 @@ def test_context_builder_orderbook_mapping():
     context = builder.build(
 
         FeatureSnapshot(
+
             symbol="ESU6"
+
         ),
 
         FakeOrderBook(),
@@ -245,6 +251,7 @@ def test_context_builder_orderbook_mapping():
 
 
     assert context.orderbook.active_orders == 2
+
 
 
 
@@ -313,13 +320,16 @@ def test_context_builder_feature_mapping():
 
 
 
+
 def test_context_builder_position_mapping():
 
 
     context = ContextBuilder().build(
 
         FeatureSnapshot(
+
             symbol="ESU6"
+
         ),
 
         FakeOrderBook(),
@@ -347,13 +357,16 @@ def test_context_builder_position_mapping():
 
 
 
+
 def test_context_builder_risk_mapping():
 
 
     context = ContextBuilder().build(
 
         FeatureSnapshot(
+
             symbol="ESU6"
+
         ),
 
         FakeOrderBook(),
