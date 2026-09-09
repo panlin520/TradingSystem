@@ -182,6 +182,9 @@ from core.state import (
 )
 
 
+from runtime.feature_runtime import FeatureRuntime
+
+
 
 
 # ============================================================
@@ -298,6 +301,7 @@ class TradingEngine:
         risk=None,
         execution=None,
         portfolio=None,
+        feature_runtime=None,
     ):
 
 
@@ -324,6 +328,8 @@ class TradingEngine:
         self.execution = execution
 
         self.portfolio = portfolio
+
+        self.feature_runtime = feature_runtime
 
 
 
@@ -990,6 +996,21 @@ class TradingEngine:
 
             self.orderbook.on_event(
                 event
+            )
+
+
+        # ==================================================
+        # 3.5 Feature Runtime Update
+        # ==================================================
+
+        if self.feature_runtime:
+
+            snapshot = self.feature_runtime.update(
+                timestamp=event.ts_event
+            )
+
+            self.state.set_feature_snapshot(
+                snapshot
             )
 
 
