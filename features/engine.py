@@ -17,7 +17,7 @@ Feature Engine
 
 输出：
 
-    Feature Snapshot
+    FeatureSnapshot
 
 
 
@@ -68,94 +68,13 @@ Feature Engine:
 """
 
 
-from dataclasses import dataclass
 from typing import Optional
-
 
 
 from orderbook.book import OrderBook
 
 
-
-
-# ============================================================
-# Feature Snapshot
-# ============================================================
-
-@dataclass(slots=True)
-class FeatureSnapshot:
-    """
-    市场特征快照。
-
-
-    一个snapshot代表：
-
-    当前一个时间点的市场状态。
-
-
-
-    """
-
-
-
-    # ========================================================
-    # 盘口价格
-    # ========================================================
-
-    best_bid: Optional[int]
-
-    best_ask: Optional[int]
-
-
-
-    # ========================================================
-    # Spread
-    # ========================================================
-
-    spread: Optional[int]
-
-
-
-    # ========================================================
-    # Mid Price
-    # ========================================================
-
-    mid_price: Optional[float]
-
-
-
-    # ========================================================
-    # Micro Price
-    # ========================================================
-
-    micro_price: Optional[float]
-
-
-
-    # ========================================================
-    # Volume
-    # ========================================================
-
-    bid_volume: int
-
-
-    ask_volume: int
-
-
-
-    # ========================================================
-    # Order Imbalance
-    # ========================================================
-
-    imbalance: Optional[float]
-
-
-
-    # ========================================================
-    # Event Timestamp
-    # ========================================================
-
-    timestamp: Optional[int] = None
+from features.snapshot import FeatureSnapshot
 
 
 
@@ -165,9 +84,30 @@ class FeatureSnapshot:
 # Feature Engine
 # ============================================================
 
+
 class FeatureEngine:
     """
     L3 Feature计算引擎。
+
+
+
+    负责：
+
+        OrderBook
+
+            ↓
+
+        FeatureSnapshot
+
+
+
+    不负责：
+
+        Strategy
+
+        Risk
+
+        Execution
 
 
 
@@ -184,9 +124,12 @@ class FeatureEngine:
 
 
 
+        # 最近一次Feature Snapshot
+
         self.last_snapshot: Optional[
             FeatureSnapshot
         ] = None
+
 
 
 
@@ -195,12 +138,28 @@ class FeatureEngine:
     # 更新Feature
     # ========================================================
 
+
     def update(
         self,
         timestamp: Optional[int] = None
     ) -> FeatureSnapshot:
         """
         从当前OrderBook计算特征。
+
+
+
+        参数：
+
+            timestamp:
+
+                当前事件时间
+
+
+
+        返回：
+
+            FeatureSnapshot
+
 
 
         """
@@ -249,13 +208,14 @@ class FeatureEngine:
 
 
 
-            imbalance=
+            obi=
                 book.imbalance(),
 
 
 
             timestamp=
                 timestamp,
+
 
         )
 
@@ -270,9 +230,11 @@ class FeatureEngine:
 
 
 
+
     # ========================================================
     # 获取最新状态
     # ========================================================
+
 
     def get_latest(
         self
@@ -287,15 +249,18 @@ class FeatureEngine:
 
 
 
+
     # ========================================================
     # 字典输出
     # ========================================================
+
 
     def to_dict(
         self
     ) -> dict:
         """
         转换为Web/API格式。
+
 
 
         """
@@ -306,42 +271,4 @@ class FeatureEngine:
 
 
 
-        return {
-
-
-            "best_bid":
-                self.last_snapshot.best_bid,
-
-
-            "best_ask":
-                self.last_snapshot.best_ask,
-
-
-            "spread":
-                self.last_snapshot.spread,
-
-
-            "mid_price":
-                self.last_snapshot.mid_price,
-
-
-            "micro_price":
-                self.last_snapshot.micro_price,
-
-
-            "bid_volume":
-                self.last_snapshot.bid_volume,
-
-
-            "ask_volume":
-                self.last_snapshot.ask_volume,
-
-
-            "imbalance":
-                self.last_snapshot.imbalance,
-
-
-            "timestamp":
-                self.last_snapshot.timestamp,
-
-        }
+        return self.last_snapshot.to_dict()
