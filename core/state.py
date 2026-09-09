@@ -15,12 +15,14 @@ Trading System State
     所有模块共享统一状态。
 
 
+
 包括：
 
     - 当前运行模式
     - 当前系统时间
     - 当前事件信息
     - OrderBook状态
+    - Feature状态
     - Portfolio状态
     - Strategy状态
     - Risk状态
@@ -37,6 +39,7 @@ State 是数据容器。
 不包含业务逻辑。
 
 
+
 不要在这里：
 
     - 撮合订单
@@ -47,45 +50,23 @@ State 是数据容器。
 
 ============================================================
 
-
-系统结构：
-
-                Trading Engine
-
-                      |
-
-                      v
-
-                 SystemState
-
-
-        +-------------+-------------+
-
-        |             |             |
-
-     OrderBook   Portfolio     Risk
-
-
-        |
-
-     Strategy
-
-
-============================================================
-
 """
 
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
+
 from core.clock import ClockMode
+
+
 
 
 
 # ============================================================
 # System State
 # ============================================================
+
 
 @dataclass
 class SystemState:
@@ -96,7 +77,6 @@ class SystemState:
     一个实例代表：
 
         当前系统快照。
-
 
 
     用于：
@@ -121,11 +101,13 @@ class SystemState:
 
 
 
+
     # ========================================================
     # 当前系统时间
     # ========================================================
 
     timestamp: Optional[int] = None
+
 
 
 
@@ -137,11 +119,13 @@ class SystemState:
 
 
 
+
     # ========================================================
     # 当前事件
     # ========================================================
 
     last_event: Optional[Any] = None
+
 
 
 
@@ -156,6 +140,23 @@ class SystemState:
 
 
 
+
+    # ========================================================
+    # Feature状态
+    #
+    # 实际对象由FeatureEngine注入
+    #
+    # 类型：
+    #
+    #     features.snapshot.FeatureSnapshot
+    #
+    # ========================================================
+
+    feature_snapshot: Optional[Any] = None
+
+
+
+
     # ========================================================
     # Portfolio状态
     #
@@ -167,13 +168,17 @@ class SystemState:
 
 
 
+
     # ========================================================
     # Strategy状态
     # ========================================================
 
     strategy_state: Dict[str, Any] = field(
+
         default_factory=dict
+
     )
+
 
 
 
@@ -182,8 +187,11 @@ class SystemState:
     # ========================================================
 
     risk_state: Dict[str, Any] = field(
+
         default_factory=dict
+
     )
+
 
 
 
@@ -192,8 +200,11 @@ class SystemState:
     # ========================================================
 
     execution_state: Dict[str, Any] = field(
+
         default_factory=dict
+
     )
+
 
 
 
@@ -202,8 +213,11 @@ class SystemState:
     # ========================================================
 
     metrics: Dict[str, Any] = field(
+
         default_factory=dict
+
     )
+
 
 
 
@@ -212,8 +226,11 @@ class SystemState:
     # ========================================================
 
     def update_event(
+
         self,
+
         event: Any
+
     ):
         """
         更新最新市场事件。
@@ -234,13 +251,18 @@ class SystemState:
 
 
 
+
+
     # ========================================================
     # 更新OrderBook
     # ========================================================
 
     def set_orderbook(
+
         self,
+
         orderbook: Any
+
     ):
         """
         注入OrderBook对象。
@@ -250,13 +272,55 @@ class SystemState:
 
 
 
+
+
+    # ========================================================
+    # 更新Feature Snapshot
+    # ========================================================
+
+    def set_feature_snapshot(
+
+        self,
+
+        snapshot: Any
+
+    ):
+        """
+        注入最新FeatureSnapshot。
+
+
+        来源：
+
+            FeatureEngine
+
+
+        例如：
+
+            mid_price
+
+            micro_price
+
+            imbalance
+
+
+        """
+
+        self.feature_snapshot = snapshot
+
+
+
+
+
     # ========================================================
     # 更新Portfolio
     # ========================================================
 
     def set_portfolio(
+
         self,
+
         portfolio: Any
+
     ):
         """
         注入Portfolio对象。
@@ -266,28 +330,28 @@ class SystemState:
 
 
 
+
+
     # ========================================================
     # 设置策略状态
     # ========================================================
 
     def update_strategy_state(
+
         self,
+
         key: str,
+
         value: Any
+
     ):
         """
         更新策略状态。
-
-        例如：
-
-            signals
-            confidence
-            position
-
-
         """
 
         self.strategy_state[key] = value
+
+
 
 
 
@@ -296,9 +360,13 @@ class SystemState:
     # ========================================================
 
     def update_risk_state(
+
         self,
+
         key: str,
+
         value: Any
+
     ):
         """
         更新风险状态。
@@ -308,14 +376,20 @@ class SystemState:
 
 
 
+
+
     # ========================================================
     # 更新执行状态
     # ========================================================
 
     def update_execution_state(
+
         self,
+
         key: str,
+
         value: Any
+
     ):
         """
         更新执行状态。
@@ -325,31 +399,28 @@ class SystemState:
 
 
 
+
+
     # ========================================================
     # 添加统计
     # ========================================================
 
     def update_metric(
+
         self,
+
         key: str,
+
         value: Any
+
     ):
         """
         更新系统指标。
-
-        例如：
-
-            latency
-
-            throughput
-
-            pnl
-
-            drawdown
-
         """
 
         self.metrics[key] = value
+
+
 
 
 
@@ -357,7 +428,11 @@ class SystemState:
     # 快照
     # ========================================================
 
-    def snapshot(self) -> dict:
+    def snapshot(
+
+        self
+
+    ) -> dict:
         """
         返回当前系统状态摘要。
 
@@ -371,33 +446,77 @@ class SystemState:
 
         """
 
+        feature = None
+
+
+        if self.feature_snapshot is not None:
+
+
+            if hasattr(
+
+                self.feature_snapshot,
+
+                "to_dict"
+
+            ):
+
+                feature = self.feature_snapshot.to_dict()
+
+
+            else:
+
+                feature = self.feature_snapshot
+
+
+
         return {
 
+
             "mode":
+
                 self.mode.value,
 
 
+
             "timestamp":
+
                 self.timestamp,
 
 
+
             "event_count":
+
                 self.event_count,
 
 
+
+            "feature":
+
+                feature,
+
+
+
             "strategy":
+
                 self.strategy_state,
 
 
+
             "risk":
+
                 self.risk_state,
 
 
+
             "execution":
+
                 self.execution_state,
 
 
+
             "metrics":
+
                 self.metrics,
+
 
         }
