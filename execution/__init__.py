@@ -11,29 +11,7 @@ Execution Package
 
 ============================================================
 
-支持模式：
-
-BACKTEST
-    Historical Data
-        |
-        v
-    Execution Simulator
-
-PAPER
-    Real Market Data
-        |
-        v
-    Simulated Execution
-
-LIVE
-    Exchange / Broker API
-        |
-        v
-    Real Execution
-
-============================================================
-
-执行流程：
+正式 Runtime 链：
 
 Signal
    |
@@ -41,7 +19,7 @@ Signal
 Order
    |
    v
-Execution
+ExecutionEngine
    |
    v
 Fill
@@ -51,15 +29,24 @@ Portfolio
 
 ============================================================
 
-原则：
+Canonical API：
 
-Backtest / Paper / Live 共享：
+    ExecutionEngine
+    ExecutionMode
+    Fill
 
-    Order 结构
-    Execution 接口
-    Risk 接口
+说明：
 
-避免三套交易代码。
+    - Order 的 canonical 定义位于 order/order.py
+    - Fill 的 canonical 定义位于 execution/fill.py
+    - ExecutionEngine 是当前正式执行入口
+
+不再从 package 根目录导出：
+
+    OrderExecutor
+    ExecutionSimulator
+
+这样避免与 ExecutionEngine 形成多套并行执行入口。
 
 ============================================================
 """
@@ -68,40 +55,16 @@ Backtest / Paper / Live 共享：
 __version__ = "0.2.0"
 
 
-# ============================================================
-# Canonical Runtime API
-# ============================================================
-
 from .execution_engine import (
     ExecutionEngine,
     ExecutionMode,
 )
 
-
-# ============================================================
-# Canonical Fill
-# ============================================================
-#
-# 当前项目中的独立 Fill 定义位于 execution/fill.py。
-# 包级导出统一从这里获取，避免 __init__.py 与
-# execution_engine.py 内部 Fill 定义产生歧义。
-# ============================================================
-
 from .fill import Fill
-
-
-# ============================================================
-# Execution Abstractions
-# ============================================================
-
-from .order_executor import OrderExecutor
-from .simulator import ExecutionSimulator
 
 
 __all__ = [
     "ExecutionEngine",
     "ExecutionMode",
     "Fill",
-    "OrderExecutor",
-    "ExecutionSimulator",
 ]
