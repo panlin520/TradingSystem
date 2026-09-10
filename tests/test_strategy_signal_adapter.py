@@ -21,7 +21,8 @@ Strategy Signal Adapter Contract Test
     SELL EXIT
     HOLD / NONE
     symbol mapping
-    quantity policy
+    ENTRY quantity policy
+    EXIT full-position quantity policy
     confidence mapping
     metadata mapping
 
@@ -54,17 +55,44 @@ from signals.signal import (
 
 
 
+class FakePosition:
+
+    def __init__(
+        self,
+        side="FLAT",
+        quantity=0,
+    ):
+
+        self.side = side
+
+        self.quantity = quantity
+
+
+
+
+
 class FakeContext:
 
     def __init__(
         self,
         symbol="ESU6",
         timestamp=123456789,
+        position_side="FLAT",
+        position_quantity=0,
+        with_position=True,
     ):
 
         self.symbol = symbol
 
         self.timestamp = timestamp
+
+
+        if with_position:
+
+            self.position = FakePosition(
+                side=position_side,
+                quantity=position_quantity,
+            )
 
 
 
@@ -203,10 +231,10 @@ def test_sell_entry_mapping():
 
 
 
-def test_buy_exit_mapping():
+def test_entry_uses_configured_quantity_even_when_position_exists():
 
     adapter = StrategySignalAdapter(
-        quantity=1
+        quantity=4
     )
 
 
@@ -214,23 +242,26 @@ def test_buy_exit_mapping():
 
         create_composite(
             side=StrategySignalSide.BUY,
-            signal_type=StrategySignalType.EXIT,
+            signal_type=StrategySignalType.ENTRY,
         ),
 
-        FakeContext(),
+        FakeContext(
+            position_side="LONG",
+            position_quantity=9,
+        ),
 
     )
 
 
-    assert result.side == RuntimeSignalSide.BUY
+    assert result.quantity == 4
 
-    assert result.signal_type == RuntimeSignalType.EXIT
-
-
+    assert result.signal_type == RuntimeSignalType.ENTRY
 
 
 
-def test_sell_exit_mapping():
+
+
+def test_long_three_sell_exit_uses_full_position_quantity():
 
     adapter = StrategySignalAdapter(
         quantity=1
@@ -244,14 +275,172 @@ def test_sell_exit_mapping():
             signal_type=StrategySignalType.EXIT,
         ),
 
-        FakeContext(),
+        FakeContext(
+            position_side="LONG",
+            position_quantity=3,
+        ),
 
     )
 
 
+    assert isinstance(
+        result,
+        RuntimeSignal,
+    )
+
     assert result.side == RuntimeSignalSide.SELL
 
     assert result.signal_type == RuntimeSignalType.EXIT
+
+    assert result.quantity == 3
+
+
+
+
+
+def test_short_two_buy_exit_uses_full_position_quantity():
+
+    adapter = StrategySignalAdapter(
+        quantity=1
+    )
+
+
+    result = adapter.adapt(
+
+        create_composite(
+            side=StrategySignalSide.BUY,
+            signal_type=StrategySignalType.EXIT,
+        ),
+
+        FakeContext(
+            position_side="SHORT",
+            position_quantity=2,
+        ),
+
+    )
+
+
+    assert isinstance(
+        result,
+        RuntimeSignal,
+    )
+
+    assert result.side == RuntimeSignalSide.BUY
+
+    assert result.signal_type == RuntimeSignalType.EXIT
+
+    assert result.quantity == 2
+
+
+
+
+
+def test_negative_position_quantity_uses_absolute_value():
+
+    adapter = StrategySignalAdapter(
+        quantity=1
+    )
+
+
+    result = adapter.adapt(
+
+        create_composite(
+            side=StrategySignalSide.BUY,
+            signal_type=StrategySignalType.EXIT,
+        ),
+
+        FakeContext(
+            position_side="SHORT",
+            position_quantity=-5,
+        ),
+
+    )
+
+
+    assert result.quantity == 5
+
+
+
+
+
+def test_flat_exit_returns_none():
+
+    adapter = StrategySignalAdapter(
+        quantity=1
+    )
+
+
+    result = adapter.adapt(
+
+        create_composite(
+            side=StrategySignalSide.SELL,
+            signal_type=StrategySignalType.EXIT,
+        ),
+
+        FakeContext(
+            position_side="FLAT",
+            position_quantity=0,
+        ),
+
+    )
+
+
+    assert result is None
+
+
+
+
+
+def test_exit_zero_position_quantity_returns_none():
+
+    adapter = StrategySignalAdapter(
+        quantity=1
+    )
+
+
+    result = adapter.adapt(
+
+        create_composite(
+            side=StrategySignalSide.SELL,
+            signal_type=StrategySignalType.EXIT,
+        ),
+
+        FakeContext(
+            position_side="LONG",
+            position_quantity=0,
+        ),
+
+    )
+
+
+    assert result is None
+
+
+
+
+
+def test_exit_without_position_returns_none():
+
+    adapter = StrategySignalAdapter(
+        quantity=1
+    )
+
+
+    result = adapter.adapt(
+
+        create_composite(
+            side=StrategySignalSide.SELL,
+            signal_type=StrategySignalType.EXIT,
+        ),
+
+        FakeContext(
+            with_position=False
+        ),
+
+    )
+
+
+    assert result is None
 
 
 
