@@ -70,6 +70,7 @@ from typing import Optional, Dict, Any
 
 
 
+
 # ============================================================
 # Signal Direction
 # ============================================================
@@ -85,6 +86,7 @@ class SignalSide(Enum):
 
 
     HOLD = "HOLD"
+
 
 
 
@@ -110,6 +112,7 @@ class SignalType(Enum):
 
 
     NONE = "NONE"
+
 
 
 
@@ -170,12 +173,14 @@ class Signal:
 
 
 
+
     # ========================================================
     # Type
     # ========================================================
 
 
     signal_type: SignalType = SignalType.ENTRY
+
 
 
 
@@ -194,12 +199,14 @@ class Signal:
 
 
 
+
     # ========================================================
     # Price
     # ========================================================
 
 
     price: Optional[int] = None
+
 
 
 
@@ -216,6 +223,7 @@ class Signal:
 
 
 
+
     # ========================================================
     # Confidence
     # ========================================================
@@ -227,11 +235,13 @@ class Signal:
 
 
 
+
     # ========================================================
     # Score
     # ========================================================
 
     score: float = 0.0
+
 
 
 
@@ -248,6 +258,7 @@ class Signal:
 
 
 
+
     # ========================================================
     # Timestamp
     # ========================================================
@@ -259,12 +270,14 @@ class Signal:
 
 
 
+
     # ========================================================
     # Strategy Name
     # ========================================================
 
 
     strategy: Optional[str] = None
+
 
 
 
@@ -287,27 +300,70 @@ class Signal:
 
 
 
+
     # ========================================================
     # Validation
     # ========================================================
 
 
     def is_valid(self) -> bool:
+        """
+        Strategy Signal 合法性。
+
+        ENTRY:
+            必须有明确 BUY / SELL 方向。
+
+        EXIT:
+            允许 BUY / SELL，也允许 HOLD。
+
+            HOLD + EXIT 的含义不是“什么都不做”，
+            而是：
+
+                退出当前已有仓位。
+
+            具体退出方向由 CompositeSignalEngine
+            根据 StrategyContext.position 解析：
+
+                LONG  -> SELL
+                SHORT -> BUY
+
+        NONE:
+            永远无效。
+
+        所有可执行信号：
+            size 必须 > 0。
+        """
+
+
+        if self.size <= 0:
+
+            return False
+
+
+        if self.signal_type == SignalType.NONE:
+
+            return False
+
+
+        if self.signal_type == SignalType.EXIT:
+
+            return self.side in (
+
+                SignalSide.BUY,
+
+                SignalSide.SELL,
+
+                SignalSide.HOLD,
+
+            )
 
 
         return (
-
-            self.side != SignalSide.HOLD
-
-            and
-
-            self.signal_type != SignalType.NONE
-
-            and
-
-            self.size > 0
-
+            self.side
+            !=
+            SignalSide.HOLD
         )
+
 
 
 
@@ -338,6 +394,8 @@ class Signal:
 
 
 
+
+
     # ========================================================
     # Exit
     # ========================================================
@@ -355,6 +413,7 @@ class Signal:
             SignalType.EXIT
 
         )
+
 
 
 
@@ -397,6 +456,7 @@ class Signal:
             SignalSide.SELL
 
         )
+
 
 
 

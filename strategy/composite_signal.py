@@ -142,6 +142,7 @@ class CompositeSignal:
 
 
 
+
     def is_trade(self):
 
         return (
@@ -167,6 +168,7 @@ class CompositeSignal:
 
 
 
+
     def is_entry(self):
 
         return (
@@ -178,6 +180,7 @@ class CompositeSignal:
             SignalType.ENTRY
 
         )
+
 
 
 
@@ -245,6 +248,8 @@ class CompositeSignalEngine:
 
 
 
+
+
     # ========================================================
     # Combine
     # ========================================================
@@ -287,7 +292,6 @@ class CompositeSignalEngine:
         ]
 
 
-
         if not valid:
 
             return CompositeSignal()
@@ -315,13 +319,14 @@ class CompositeSignalEngine:
         ]
 
 
-
         if exits:
 
 
             return self._merge(
 
-                exits
+                exits,
+
+                context=context,
 
             )
 
@@ -352,6 +357,8 @@ class CompositeSignalEngine:
 
 
 
+
+
         # ----------------------------------------------------
         # Entry
         # ----------------------------------------------------
@@ -368,7 +375,6 @@ class CompositeSignalEngine:
             SignalType.ENTRY
 
         ]
-
 
 
         if not entries:
@@ -405,7 +411,9 @@ class CompositeSignalEngine:
 
         self,
 
-        signals: List[Signal]
+        signals: List[Signal],
+
+        context=None,
 
     ) -> CompositeSignal:
 
@@ -420,6 +428,7 @@ class CompositeSignalEngine:
             for s in signals
 
         )
+
 
 
 
@@ -447,9 +456,11 @@ class CompositeSignalEngine:
 
 
 
+
         if confidence < self.min_confidence:
 
             return CompositeSignal()
+
 
 
 
@@ -459,6 +470,31 @@ class CompositeSignalEngine:
 
             return CompositeSignal()
 
+
+
+
+
+
+
+
+
+
+
+        # ----------------------------------------------------
+        # Signal Type
+        # ----------------------------------------------------
+        #
+        # combine() 在调用 _merge() 前已经分别筛选：
+        #
+        #     EXIT
+        #
+        #     ENTRY
+        #
+        # 所以保留输入 Signal 的真实类型。
+        # ----------------------------------------------------
+
+
+        signal_type = signals[0].signal_type
 
 
 
@@ -485,7 +521,6 @@ class CompositeSignalEngine:
         )
 
 
-
         sell_score = sum(
 
             s.confidence
@@ -497,6 +532,7 @@ class CompositeSignalEngine:
             SignalSide.SELL
 
         )
+
 
 
 
@@ -518,11 +554,55 @@ class CompositeSignalEngine:
 
 
 
+        elif (
+
+            signal_type == SignalType.EXIT
+
+            and
+
+            buy_score == 0
+
+            and
+
+            sell_score == 0
+
+        ):
+
+            # ------------------------------------------------
+            # HOLD + EXIT
+            # ------------------------------------------------
+            #
+            # Strategy 层的 HOLD + EXIT 表示：
+            #
+            #     “退出当前已有仓位”
+            #
+            # 它不是最终订单方向。
+            #
+            # 最终方向必须由当前仓位显式解析：
+            #
+            #     LONG  -> SELL
+            #     SHORT -> BUY
+            #
+            # FLAT 或缺少 position 时：
+            #
+            #     没有可退出仓位，返回空 CompositeSignal。
+            # ------------------------------------------------
+
+            side = self._resolve_exit_side(
+                context
+            )
+
+
+            if side is None:
+
+                return CompositeSignal()
+
+
+
         else:
 
 
             return CompositeSignal()
-
 
 
 
@@ -545,36 +625,8 @@ class CompositeSignalEngine:
         ]
 
 
-
         category = categories[0]
 
-
-
-        # ----------------------------------------------------
-        # Signal Type
-        # ----------------------------------------------------
-        #
-        # _merge() 同时用于：
-        #
-        #     ENTRY signals
-        #
-        # 和：
-        #
-        #     EXIT signals
-        #
-        # 因此不能写死为 ENTRY。
-        #
-        # combine() 在调用 _merge() 前已经分别筛选：
-        #
-        #     exits
-        #
-        #     entries
-        #
-        # 所以这里保留输入 Signal 的真实 signal_type。
-        # ----------------------------------------------------
-
-
-        signal_type = signals[0].signal_type
 
 
 
@@ -640,3 +692,81 @@ class CompositeSignalEngine:
             }
 
         )
+
+
+
+
+
+
+
+
+    # ========================================================
+    # Exit Direction Resolver
+    # ========================================================
+
+
+    @staticmethod
+    def _resolve_exit_side(
+        context,
+    ):
+        """
+        将 HOLD + EXIT 转换为真实平仓方向。
+
+        StrategyContext.position.side：
+
+            LONG
+                ↓
+            SELL
+
+            SHORT
+                ↓
+            BUY
+
+            FLAT
+                ↓
+            None
+        """
+
+
+        if context is None:
+
+            return None
+
+
+        position = getattr(
+            context,
+            "position",
+            None,
+        )
+
+
+        if position is None:
+
+            return None
+
+
+        position_side = getattr(
+            position,
+            "side",
+            None,
+        )
+
+
+        position_side = getattr(
+            position_side,
+            "value",
+            position_side,
+        )
+
+
+        if position_side == "LONG":
+
+            return SignalSide.SELL
+
+
+        if position_side == "SHORT":
+
+            return SignalSide.BUY
+
+
+        return None
