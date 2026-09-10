@@ -5,51 +5,52 @@ risk/risk_manager_v2.py
 Risk Manager V2
 ============================================================
 
-职责：
+核心链：
 
-    Strategy signals
-          |
-          v
-    RiskManager
-          |
-          +-------------------------+
-          |                         |
-          v                         v
-    RiskLimits               ExposureEngine
-          |
-          v
-    RiskDecision
-
-同时：
-
-    SystemState.orderbook
-          |
-          v
+    Runtime Signal
+        ↓
+    RiskManagerV2
+        ↓
+    state.orderbook
+        ↓
     RiskMarketValuation
-          |
-          v
-    Normalized Valuation Price
-          |
-          v
+        ↓
+    normalized valuation price
+        ↓
     ExposureEngine
+        ↓
+    ProjectedExposure
+        ↓
+    Position Limit
+    Total Position Limit
+    Dollar Exposure Limit
+        ↓
+    RiskDecision
 
 ============================================================
 
-当前阶段：
+规则：
 
-    已打通：
+1. max_position / max_total_position：
+       按 contracts / units 控制。
 
-        OrderBook
-            ↓
-        RiskMarketValuation
-            ↓
-        normalized valuation price
-            ↓
-        ExposureEngine
+2. max_exposure：
+       按 gross_notional USD 控制。
 
-    但 max_exposure 暂时仍使用原数量型 gross_exposure。
+3. Dollar Exposure：
+       Σ abs(qty)
+         × normalized market price
+         × point_value
 
-    Dollar / Notional Exposure 在下一阶段启用。
+4. Fail Closed：
+       只要预测后的任意非零仓位缺少有效价格或 point_value，
+       Risk 拒绝交易。
+
+5. 旧接口兼容：
+       check_signal(signal, portfolio)
+
+   仍允许调用，但如果 signal 会产生非零仓位且没有 valuation price，
+   在正式 dollar exposure 模式下会 fail closed。
 
 ============================================================
 """
@@ -66,16 +67,11 @@ from risk.valuation import RiskMarketValuation
 
 
 
-# ============================================================
-# Risk Decision
-# ============================================================
+
 
 
 @dataclass
 class RiskDecision:
-    """
-    Risk 检查结果。
-    """
 
     approved: bool
 
@@ -110,19 +106,15 @@ class RiskDecision:
 
 
 
-# ============================================================
-# Risk Manager V2
-# ============================================================
+
 
 
 class RiskManagerV2:
     """
-    新版 Risk Manager。
+    Runtime Risk Manager。
     """
 
 
-    # Engine 可显式识别这个能力，
-    # 后续将 state 安全传入 Risk。
     supports_state_context = True
 
 
@@ -136,10 +128,6 @@ class RiskManagerV2:
     ):
 
 
-        # ==================================================
-        # Risk Limits
-        # ==================================================
-
         self.limits = (
 
             limits
@@ -150,10 +138,6 @@ class RiskManagerV2:
 
         )
 
-
-        # ==================================================
-        # Exposure Engine
-        # ==================================================
 
         self.exposure_engine = (
 
@@ -166,10 +150,6 @@ class RiskManagerV2:
         )
 
 
-        # ==================================================
-        # Kill Switch
-        # ==================================================
-
         self.kill_switch = (
 
             kill_switch
@@ -180,10 +160,6 @@ class RiskManagerV2:
 
         )
 
-
-        # ==================================================
-        # Market Valuation
-        # ==================================================
 
         self.market_valuation = (
 
@@ -196,10 +172,6 @@ class RiskManagerV2:
         )
 
 
-        # ==================================================
-        # runtime statistics
-        # ==================================================
-
         self.total_checks = 0
 
         self.total_approved = 0
@@ -207,19 +179,19 @@ class RiskManagerV2:
         self.total_rejected = 0
 
 
-        # ==================================================
-        # Valuation Diagnostics
-        # ==================================================
-
         self.last_valuation_price = None
 
+        self.last_projected_exposure = None
 
 
 
 
-    # ======================================================
-    # Single Signal Check
-    # ======================================================
+
+
+    # ========================================================
+    # Single Signal
+    # ========================================================
+
 
     def check_signal(
         self,
@@ -227,24 +199,6 @@ class RiskManagerV2:
         portfolio,
         state=None,
     ):
-        """
-        单个 Signal 风控入口。
-
-        旧接口兼容：
-
-            check_signal(
-                signal,
-                portfolio,
-            )
-
-        新接口：
-
-            check_signal(
-                signal,
-                portfolio,
-                state=state,
-            )
-        """
 
         return self.check_signals(
             signal,
@@ -254,9 +208,10 @@ class RiskManagerV2:
 
 
 
-    # ======================================================
-    # Signals Check
-    # ======================================================
+    # ========================================================
+    # Signal Check
+    # ========================================================
+
 
     def check_signals(
         self,
@@ -264,9 +219,6 @@ class RiskManagerV2:
         portfolio,
         state=None,
     ):
-        """
-        检查 Strategy signals。
-        """
 
 
         self.total_checks += 1
@@ -275,92 +227,87 @@ class RiskManagerV2:
         checks = {}
 
 
-        # ==================================================
+        # ====================================================
         # Kill Switch
-        # ==================================================
+        # ====================================================
 
         if self.kill_switch.is_triggered():
 
-
-            checks["kill_switch"] = False
-
+            checks[
+                "kill_switch"
+            ] = False
 
             return self._reject(
                 "Kill switch triggered",
-                checks
+                checks,
             )
 
 
-        checks["kill_switch"] = True
+        checks[
+            "kill_switch"
+        ] = True
 
 
-        # ==================================================
-        # signals 基础检查
-        # ==================================================
+        # ====================================================
+        # Signal validation
+        # ====================================================
 
         quantity = getattr(
             signals,
             "quantity",
-            0
+            0,
         )
 
         side = getattr(
             signals,
             "side",
-            None
+            None,
         )
 
         symbol = getattr(
             signals,
             "symbol",
-            None
+            None,
         )
 
 
         if quantity <= 0:
 
-            checks["quantity"] = False
+            checks[
+                "quantity"
+            ] = False
 
             return self._reject(
                 "Invalid quantity",
-                checks
+                checks,
             )
 
 
-        checks["quantity"] = True
+        checks[
+            "quantity"
+        ] = True
 
 
         if symbol is None:
 
-            checks["symbol"] = False
+            checks[
+                "symbol"
+            ] = False
 
             return self._reject(
                 "Missing symbol",
-                checks
+                checks,
             )
 
 
-        checks["symbol"] = True
+        checks[
+            "symbol"
+        ] = True
 
 
-        # ==================================================
+        # ====================================================
         # Risk Valuation Price
-        # ==================================================
-        #
-        # 当前阶段：
-        #
-        #     state.orderbook
-        #         ↓
-        #     RiskMarketValuation
-        #         ↓
-        #     normalized price
-        #
-        # 没有 state 时保持旧行为，
-        # valuation_price = None。
-        #
-        # 此阶段不因为缺失 valuation price 拒单，
-        # 因为 Dollar Exposure 尚未正式启用。
-        # ==================================================
+        # ====================================================
 
         valuation_price = None
 
@@ -388,16 +335,9 @@ class RiskManagerV2:
         )
 
 
-        checks["valuation_price"] = (
-            valuation_price is not None
-            if state is not None
-            else True
-        )
-
-
-        # ==================================================
+        # ====================================================
         # Projected Exposure
-        # ==================================================
+        # ====================================================
 
         projected = (
 
@@ -420,82 +360,120 @@ class RiskManagerV2:
         )
 
 
-        # ==================================================
+        self.last_projected_exposure = (
+            projected
+        )
+
+
+        # ====================================================
+        # Valuation Fail Closed
+        # ====================================================
+
+        if not projected.valuation_valid:
+
+            checks[
+                "valuation"
+            ] = False
+
+            return self._reject(
+                (
+                    "Missing or invalid valuation data: "
+                    +
+                    ", ".join(
+                        projected.invalid_symbols
+                    )
+                ),
+                checks,
+            )
+
+
+        checks[
+            "valuation"
+        ] = True
+
+
+        # ====================================================
         # Symbol Position Limit
-        # ==================================================
+        # ====================================================
 
         if (
-            abs(projected.position_quantity)
+            abs(
+                projected.position_quantity
+            )
             >
             self.limits.max_position_size
         ):
 
-            checks["position_limit"] = False
+            checks[
+                "position_limit"
+            ] = False
 
             return self._reject(
                 "Position limit exceeded",
-                checks
+                checks,
             )
 
 
-        checks["position_limit"] = True
+        checks[
+            "position_limit"
+        ] = True
 
 
-        # ==================================================
+        # ====================================================
         # Total Position Limit
-        # ==================================================
+        # ====================================================
 
         if (
-
-                projected.total_position
-
-                >
-
-                self.limits.max_total_position
-
+            projected.total_position
+            >
+            self.limits.max_total_position
         ):
 
-            checks["total_position_limit"] = False
+            checks[
+                "total_position_limit"
+            ] = False
 
             return self._reject(
                 "Total position limit exceeded",
-                checks
+                checks,
             )
 
 
-        checks["total_position_limit"] = True
+        checks[
+            "total_position_limit"
+        ] = True
 
 
-        # ==================================================
-        # Exposure Limit
-        # ==================================================
+        # ====================================================
+        # Dollar Exposure Limit
+        # ====================================================
         #
-        # 注意：
+        # Preserve existing boundary semantics:
         #
-        # 当前仍然是旧的数量型 gross_exposure。
+        #     gross_notional >= max_exposure
+        #         -> reject
         #
-        # 下一阶段才切换 dollar / notional exposure。
-        # ==================================================
+        # ====================================================
 
         if (
-
-                projected.gross_exposure
-
-                >=
-
-                self.limits.max_exposure
-
+            projected.gross_notional
+            >=
+            self.limits.max_exposure
         ):
 
-            checks["exposure_limit"] = False
+            checks[
+                "exposure_limit"
+            ] = False
 
             return self._reject(
                 "Exposure Limit exceeded",
-                checks
+                checks,
             )
 
 
-        checks["exposure_limit"] = True
+        checks[
+            "exposure_limit"
+        ] = True
 
 
         return self._approve(
@@ -503,9 +481,11 @@ class RiskManagerV2:
         )
 
 
-    # ======================================================
+
+    # ========================================================
     # Fill Update
-    # ======================================================
+    # ========================================================
+
 
     def on_fill(
         self,
@@ -518,11 +498,15 @@ class RiskManagerV2:
         )
 
 
-    # ======================================================
-    # Reset
-    # ======================================================
 
-    def reset(self):
+    # ========================================================
+    # Reset
+    # ========================================================
+
+
+    def reset(
+        self
+    ):
 
         self.kill_switch.reset()
 
@@ -534,10 +518,14 @@ class RiskManagerV2:
 
         self.last_valuation_price = None
 
+        self.last_projected_exposure = None
 
-    # ======================================================
+
+
+    # ========================================================
     # Helpers
-    # ======================================================
+    # ========================================================
+
 
     def _approve(
         self,
@@ -545,6 +533,7 @@ class RiskManagerV2:
     ):
 
         self.total_approved += 1
+
 
         return RiskDecision(
 
@@ -557,6 +546,7 @@ class RiskManagerV2:
         )
 
 
+
     def _reject(
         self,
         reason,
@@ -564,6 +554,7 @@ class RiskManagerV2:
     ):
 
         self.total_rejected += 1
+
 
         return RiskDecision(
 
@@ -576,11 +567,20 @@ class RiskManagerV2:
         )
 
 
-    # ======================================================
-    # Snapshot
-    # ======================================================
 
-    def snapshot(self):
+    # ========================================================
+    # Snapshot
+    # ========================================================
+
+
+    def snapshot(
+        self
+    ):
+
+        projected = (
+            self.last_projected_exposure
+        )
+
 
         return {
 
@@ -598,5 +598,34 @@ class RiskManagerV2:
 
             "last_valuation_price":
                 self.last_valuation_price,
+
+            "last_projected_exposure": (
+                None
+                if projected is None
+                else {
+                    "position_quantity":
+                        projected.position_quantity,
+
+                    "total_position":
+                        projected.total_position,
+
+                    "gross_exposure":
+                        projected.gross_exposure,
+
+                    "gross_notional":
+                        projected.gross_notional,
+
+                    "valuation_price":
+                        projected.valuation_price,
+
+                    "valuation_valid":
+                        projected.valuation_valid,
+
+                    "invalid_symbols":
+                        list(
+                            projected.invalid_symbols
+                        ),
+                }
+            ),
 
         }
