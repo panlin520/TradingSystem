@@ -185,6 +185,11 @@ from core.state import (
 from runtime.feature_runtime import FeatureRuntime
 
 
+from runtime.strategy_context_runtime import (
+    StrategyContextRuntime,
+)
+
+
 
 
 # ============================================================
@@ -302,6 +307,7 @@ class TradingEngine:
         execution=None,
         portfolio=None,
         feature_runtime=None,
+        strategy_context_runtime=None,
     ):
 
 
@@ -330,6 +336,10 @@ class TradingEngine:
         self.portfolio = portfolio
 
         self.feature_runtime = feature_runtime
+
+        self.strategy_context_runtime = (
+            strategy_context_runtime
+        )
 
 
 
@@ -1053,6 +1063,23 @@ class TradingEngine:
         # ==================================================
 
         self.stable_events += 1
+
+
+
+        # ==================================================
+        # 5.5
+        # Strategy Context Runtime
+        # ==================================================
+
+        if self.strategy_context_runtime:
+
+            context = self.strategy_context_runtime.build(
+                self.state
+            )
+
+            self.state.set_strategy_context(
+                context
+            )
 
 
 
