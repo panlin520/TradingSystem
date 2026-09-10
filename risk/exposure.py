@@ -83,26 +83,19 @@ class ProjectedExposure:
     """
     Signal执行后的预测风险状态。
 
-
     RiskManagerV2 使用。
-
-
-
     """
-
 
 
     # 当前symbol预测仓位
     position_quantity: int = 0
 
 
-
     # 全账户预测仓位
     total_position: int = 0
 
 
-
-    # 总Exposure金额
+    # 全账户Gross Exposure
     gross_exposure: float = 0.0
 
 
@@ -113,17 +106,11 @@ class ProjectedExposure:
 
 
 class ExposureEngine:
-
-
     """
     风险暴露计算器。
 
-
     被 RiskManagerV2 调用。
-
-
     """
-
 
 
     def __init__(
@@ -136,7 +123,6 @@ class ExposureEngine:
 
 
         # update次数统计
-
         self.update_count = 0
 
 
@@ -155,7 +141,6 @@ class ExposureEngine:
         portfolio,
         symbol
     ):
-
         """
         获取当前symbol数量
         """
@@ -164,11 +149,9 @@ class ExposureEngine:
         position = portfolio.get_position(symbol)
 
 
-
         if position is None:
 
             return 0
-
 
 
         return getattr(
@@ -194,7 +177,6 @@ class ExposureEngine:
         portfolio,
         symbol
     ):
-
         """
         当前风险暴露
         """
@@ -227,20 +209,26 @@ class ExposureEngine:
         side,
         quantity
     ):
-
         """
         预测Signal成交后的Exposure。
 
-
         不修改真实Portfolio。
-
 
         返回：
 
             ProjectedExposure
 
-        """
+        当前 ExposureEngine 没有价格/合约乘数输入，
+        因此 exposure 的单位仍然是：
 
+            abs(position.quantity)
+
+        所以：
+
+            gross_exposure
+
+        表示全账户所有 symbol 的绝对仓位暴露之和。
+        """
 
 
         current = self.get_position_quantity(
@@ -259,25 +247,12 @@ class ExposureEngine:
         #     signals.signal.SignalSide.BUY
         #     signals.signal.SignalSide.SELL
         #
-        # 直接执行：
+        # 必须先读取 Enum.value。
         #
-        #     str(SignalSide.BUY)
-        #
-        # 得到的是：
-        #
-        #     "SignalSide.BUY"
-        #
-        # 而不是：
-        #
-        #     "BUY"
-        #
-        # 因此必须先读取 Enum.value。
-        #
-        # 同时继续兼容原来的字符串：
+        # 同时兼容字符串：
         #
         #     "BUY"
         #     "SELL"
-        #
         # ==================================================
 
         if hasattr(
@@ -315,13 +290,18 @@ class ExposureEngine:
 
 
 
-        # ==============================
-        # 计算总仓位
-        # ==============================
-
+        # ==================================================
+        # 全账户预测仓位
+        # ==================================================
+        #
+        # total_position:
+        #
+        #     Σ abs(position.quantity)
+        #
+        # 其中当前 symbol 使用 projected quantity。
+        # ==================================================
 
         total_position = 0
-
 
 
         positions = getattr(
@@ -330,6 +310,8 @@ class ExposureEngine:
             {}
         )
 
+
+        symbol_found = False
 
 
         for sym, pos in positions.items():
@@ -342,62 +324,78 @@ class ExposureEngine:
             )
 
 
-            total_position += abs(qty)
+            if sym == symbol:
+
+                total_position += abs(
+                    projected
+                )
+
+                symbol_found = True
 
 
+            else:
+
+                total_position += abs(
+                    qty
+                )
 
 
+        if not symbol_found:
 
-        # 新symbol
-
-        if symbol not in positions:
-
-
-            total_position += abs(quantity)
-
-
-
-        else:
-
-
-            total_position = (
-
-                total_position
-
-                -
-
-                abs(current)
-
-                +
-
-                abs(projected)
-
+            total_position += abs(
+                projected
             )
 
 
 
 
 
-        # ==============================
-        # 返回预测结果
-        # ==============================
+
+        # ==================================================
+        # Gross Exposure
+        # ==================================================
+        #
+        # 当前 ExposureEngine 的 exposure 定义本身就是：
+        #
+        #     abs(quantity)
+        #
+        # 因此账户 Gross Exposure 应当是：
+        #
+        #     Σ abs(projected_position_i)
+        #
+        # 不能只返回当前 symbol 的 abs(projected)。
+        #
+        # 在当前数量型 Exposure 模型下：
+        #
+        #     gross_exposure == total_position
+        #
+        # ==================================================
+
+        gross_exposure = float(
+            total_position
+        )
+
+
+
+
 
 
         return ProjectedExposure(
 
             position_quantity=projected,
 
-
             total_position=total_position,
 
-
-            gross_exposure=abs(projected)
+            gross_exposure=gross_exposure,
 
         )
+
+
 
     # ============================================================
     # Compatibility Wrapper
     # ============================================================
+
 
     def project_signals(
         self,
@@ -418,11 +416,17 @@ class ExposureEngine:
             project_signal()
         """
 
+
         return self.project_signal(
+
             portfolio,
+
             symbol,
+
             side,
+
             quantity,
+
         )
 
 
@@ -441,7 +445,6 @@ class ExposureEngine:
         self,
         portfolio
     ):
-
         """
         成交后重新计算Exposure。
         """
@@ -450,9 +453,7 @@ class ExposureEngine:
         self.update_count += 1
 
 
-
         result = {}
-
 
 
         positions = getattr(
@@ -460,7 +461,6 @@ class ExposureEngine:
             "positions",
             {}
         )
-
 
 
         for symbol, position in positions.items():
@@ -473,9 +473,7 @@ class ExposureEngine:
             )
 
 
-
             result[symbol] = abs(qty)
-
 
 
         return result
@@ -501,13 +499,11 @@ class ExposureEngine:
         data = {}
 
 
-
         positions = getattr(
             portfolio,
             "positions",
             {}
         )
-
 
 
         for symbol, position in positions.items():
@@ -518,7 +514,6 @@ class ExposureEngine:
                 "quantity",
                 0
             )
-
 
 
             data[symbol] = ExposureSnapshot(
