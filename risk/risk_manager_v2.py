@@ -12,42 +12,44 @@ Risk Manager V2
           v
     RiskManager
           |
-          +----------------+
-          |                |
-          v                v
-    RiskLimits       ExposureEngine
+          +-------------------------+
+          |                         |
+          v                         v
+    RiskLimits               ExposureEngine
           |
           v
     RiskDecision
 
-============================================================
+同时：
 
-负责：
-
-    - signals 风控检查
-    - Position Limit
-    - Total Position Limit
-    - Exposure Limit
-    - Kill Switch
-    - Risk Decision
-
-============================================================
-
-不负责：
-
-    - Order 创建
-    - Execution
-    - Portfolio 更新
-    - PnL 计算
-    - Position 保存
+    SystemState.orderbook
+          |
+          v
+    RiskMarketValuation
+          |
+          v
+    Normalized Valuation Price
+          |
+          v
+    ExposureEngine
 
 ============================================================
 
-核心原则：
+当前阶段：
 
-    Risk 只负责回答：
+    已打通：
 
-        "这个交易是否允许进入系统？"
+        OrderBook
+            ↓
+        RiskMarketValuation
+            ↓
+        normalized valuation price
+            ↓
+        ExposureEngine
+
+    但 max_exposure 暂时仍使用原数量型 gross_exposure。
+
+    Dollar / Notional Exposure 在下一阶段启用。
 
 ============================================================
 """
@@ -60,6 +62,7 @@ from typing import Dict
 from risk.limits import RiskLimits
 from risk.exposure import ExposureEngine
 from risk.kill_switch import KillSwitch
+from risk.valuation import RiskMarketValuation
 
 
 
@@ -115,22 +118,13 @@ class RiskDecision:
 class RiskManagerV2:
     """
     新版 Risk Manager。
-
-
-    所有风险计算：
-
-        ExposureEngine
-
-
-    所有限制：
-
-        RiskLimits
-
-
-    所有紧急停止：
-
-        KillSwitch
     """
+
+
+    # Engine 可显式识别这个能力，
+    # 后续将 state 安全传入 Risk。
+    supports_state_context = True
+
 
 
     def __init__(
@@ -138,6 +132,7 @@ class RiskManagerV2:
         limits=None,
         exposure_engine=None,
         kill_switch=None,
+        market_valuation=None,
     ):
 
 
@@ -187,6 +182,21 @@ class RiskManagerV2:
 
 
         # ==================================================
+        # Market Valuation
+        # ==================================================
+
+        self.market_valuation = (
+
+            market_valuation
+
+            if market_valuation is not None
+
+            else RiskMarketValuation()
+
+        )
+
+
+        # ==================================================
         # runtime statistics
         # ==================================================
 
@@ -195,6 +205,13 @@ class RiskManagerV2:
         self.total_approved = 0
 
         self.total_rejected = 0
+
+
+        # ==================================================
+        # Valuation Diagnostics
+        # ==================================================
+
+        self.last_valuation_price = None
 
 
 
@@ -208,18 +225,31 @@ class RiskManagerV2:
         self,
         signal,
         portfolio,
+        state=None,
     ):
         """
         单个 Signal 风控入口。
 
-        内部统一调用：
+        旧接口兼容：
 
-            check_signals()
+            check_signal(
+                signal,
+                portfolio,
+            )
+
+        新接口：
+
+            check_signal(
+                signal,
+                portfolio,
+                state=state,
+            )
         """
 
         return self.check_signals(
             signal,
             portfolio,
+            state=state,
         )
 
 
@@ -232,19 +262,10 @@ class RiskManagerV2:
         self,
         signals,
         portfolio,
+        state=None,
     ):
         """
         检查 Strategy signals。
-
-        signals 必须提供：
-
-            symbol
-            side
-            quantity
-
-        返回：
-
-            RiskDecision
         """
 
 
@@ -323,6 +344,58 @@ class RiskManagerV2:
 
 
         # ==================================================
+        # Risk Valuation Price
+        # ==================================================
+        #
+        # 当前阶段：
+        #
+        #     state.orderbook
+        #         ↓
+        #     RiskMarketValuation
+        #         ↓
+        #     normalized price
+        #
+        # 没有 state 时保持旧行为，
+        # valuation_price = None。
+        #
+        # 此阶段不因为缺失 valuation price 拒单，
+        # 因为 Dollar Exposure 尚未正式启用。
+        # ==================================================
+
+        valuation_price = None
+
+
+        if state is not None:
+
+            orderbook = getattr(
+                state,
+                "orderbook",
+                None,
+            )
+
+
+            valuation_price = (
+                self.market_valuation
+                .price_for_side(
+                    orderbook,
+                    side,
+                )
+            )
+
+
+        self.last_valuation_price = (
+            valuation_price
+        )
+
+
+        checks["valuation_price"] = (
+            valuation_price is not None
+            if state is not None
+            else True
+        )
+
+
+        # ==================================================
         # Projected Exposure
         # ==================================================
 
@@ -340,6 +413,8 @@ class RiskManagerV2:
 
                 quantity,
 
+                valuation_price=valuation_price,
+
             )
 
         )
@@ -347,23 +422,6 @@ class RiskManagerV2:
 
         # ==================================================
         # Symbol Position Limit
-        # ==================================================
-        #
-        # Position quantity 是带方向的 signed quantity：
-        #
-        #     LONG  -> 正数
-        #     SHORT -> 负数
-        #
-        # 单品种最大仓位限制必须约束仓位“绝对大小”，
-        # 不能只比较正数，否则 SHORT 会绕过限制。
-        #
-        # 例如：
-        #
-        #     max_position_size = 5
-        #
-        #     +6 -> reject
-        #     -6 -> 也必须 reject
-        #
         # ==================================================
 
         if (
@@ -411,6 +469,13 @@ class RiskManagerV2:
         # ==================================================
         # Exposure Limit
         # ==================================================
+        #
+        # 注意：
+        #
+        # 当前仍然是旧的数量型 gross_exposure。
+        #
+        # 下一阶段才切换 dollar / notional exposure。
+        # ==================================================
 
         if (
 
@@ -447,12 +512,6 @@ class RiskManagerV2:
         fill,
         portfolio,
     ):
-        """
-        成交后更新。
-
-        Position 实际变化由 Portfolio 负责。
-        Risk 这里只刷新统计。
-        """
 
         return self.exposure_engine.update(
             portfolio
@@ -472,6 +531,8 @@ class RiskManagerV2:
         self.total_approved = 0
 
         self.total_rejected = 0
+
+        self.last_valuation_price = None
 
 
     # ======================================================
@@ -534,5 +595,8 @@ class RiskManagerV2:
 
             "kill_switch":
                 self.kill_switch.snapshot(),
+
+            "last_valuation_price":
+                self.last_valuation_price,
 
         }

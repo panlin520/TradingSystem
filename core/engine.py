@@ -638,10 +638,47 @@ class TradingEngine:
 
         if self.risk:
 
-            decision = self.risk.check_signal(
-                signal,
-                self.portfolio,
-            )
+            # ==================================================
+            # Risk Context Compatibility
+            # ==================================================
+            #
+            # RiskManagerV2 supports:
+            #
+            #     check_signal(
+            #         signal,
+            #         portfolio,
+            #         state=state,
+            #     )
+            #
+            # 旧 Risk 实现仍然只接受：
+            #
+            #     check_signal(
+            #         signal,
+            #         portfolio,
+            #     )
+            #
+            # 不能无条件传 state，
+            # 否则会破坏旧接口。
+            # ==================================================
+
+            if getattr(
+                self.risk,
+                "supports_state_context",
+                False,
+            ):
+
+                decision = self.risk.check_signal(
+                    signal,
+                    self.portfolio,
+                    state=self.state,
+                )
+
+            else:
+
+                decision = self.risk.check_signal(
+                    signal,
+                    self.portfolio,
+                )
 
             if not decision.approved:
 

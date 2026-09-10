@@ -24,6 +24,7 @@ Exposure Calculation
 - 预测信号后的暴露
 - 总仓位计算
 - 风险检查辅助
+- 接收 Risk valuation price（为后续 Dollar Exposure 准备）
 
 
 不负责：
@@ -32,6 +33,7 @@ Exposure Calculation
 - 成交
 - Position更新
 - Strategy
+- 从 OrderBook 提取价格
 
 
 ============================================================
@@ -40,6 +42,7 @@ Exposure Calculation
 
 
 from dataclasses import dataclass
+from typing import Optional
 
 
 
@@ -84,6 +87,14 @@ class ProjectedExposure:
     Signal执行后的预测风险状态。
 
     RiskManagerV2 使用。
+
+    注意：
+
+        valuation_price 已经是 normalized price。
+
+        当前阶段仅完成 Risk valuation price 传递链路，
+        gross_exposure 仍保持数量型定义，
+        暂时不切换 Dollar / Notional Exposure。
     """
 
 
@@ -95,8 +106,12 @@ class ProjectedExposure:
     total_position: int = 0
 
 
-    # 全账户Gross Exposure
+    # 当前阶段仍为数量型 Gross Exposure
     gross_exposure: float = 0.0
+
+
+    # RiskMarketValuation 提供的 normalized price
+    valuation_price: Optional[float] = None
 
 
 
@@ -207,27 +222,26 @@ class ExposureEngine:
         portfolio,
         symbol,
         side,
-        quantity
+        quantity,
+        valuation_price=None,
     ):
         """
         预测Signal成交后的Exposure。
 
         不修改真实Portfolio。
 
+        参数：
+
+            valuation_price:
+
+                RiskMarketValuation 提供的 normalized price。
+
+                当前阶段只保存到 ProjectedExposure，
+                不参与 gross_exposure 限制计算。
+
         返回：
 
             ProjectedExposure
-
-        当前 ExposureEngine 没有价格/合约乘数输入，
-        因此 exposure 的单位仍然是：
-
-            abs(position.quantity)
-
-        所以：
-
-            gross_exposure
-
-        表示全账户所有 symbol 的绝对仓位暴露之和。
         """
 
 
@@ -240,19 +254,6 @@ class ExposureEngine:
 
         # ==================================================
         # Side Normalization
-        # ==================================================
-        #
-        # Runtime Signal 使用 Enum：
-        #
-        #     signals.signal.SignalSide.BUY
-        #     signals.signal.SignalSide.SELL
-        #
-        # 必须先读取 Enum.value。
-        #
-        # 同时兼容字符串：
-        #
-        #     "BUY"
-        #     "SELL"
         # ==================================================
 
         if hasattr(
@@ -298,7 +299,7 @@ class ExposureEngine:
         #
         #     Σ abs(position.quantity)
         #
-        # 其中当前 symbol 使用 projected quantity。
+        # 当前 symbol 使用 projected quantity。
         # ==================================================
 
         total_position = 0
@@ -352,23 +353,14 @@ class ExposureEngine:
 
 
         # ==================================================
-        # Gross Exposure
+        # 当前阶段 Gross Exposure
         # ==================================================
         #
-        # 当前 ExposureEngine 的 exposure 定义本身就是：
+        # 暂时仍然保持数量型定义：
         #
-        #     abs(quantity)
+        #     Σ abs(quantity)
         #
-        # 因此账户 Gross Exposure 应当是：
-        #
-        #     Σ abs(projected_position_i)
-        #
-        # 不能只返回当前 symbol 的 abs(projected)。
-        #
-        # 在当前数量型 Exposure 模型下：
-        #
-        #     gross_exposure == total_position
-        #
+        # 下一阶段才切换到 Dollar / Notional Exposure。
         # ==================================================
 
         gross_exposure = float(
@@ -388,6 +380,8 @@ class ExposureEngine:
 
             gross_exposure=gross_exposure,
 
+            valuation_price=valuation_price,
+
         )
 
 
@@ -403,6 +397,7 @@ class ExposureEngine:
         symbol,
         side,
         quantity,
+        valuation_price=None,
     ):
         """
         Compatibility wrapper.
@@ -411,9 +406,24 @@ class ExposureEngine:
 
             project_signals()
 
-        Internally uses:
+        旧调用仍兼容：
 
-            project_signal()
+            project_signals(
+                portfolio,
+                symbol,
+                side,
+                quantity,
+            )
+
+        新调用：
+
+            project_signals(
+                portfolio,
+                symbol,
+                side,
+                quantity,
+                valuation_price=...
+            )
         """
 
 
@@ -426,6 +436,8 @@ class ExposureEngine:
             side,
 
             quantity,
+
+            valuation_price=valuation_price,
 
         )
 
