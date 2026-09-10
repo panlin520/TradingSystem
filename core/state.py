@@ -23,6 +23,7 @@ Trading System State
     - 当前事件信息
     - OrderBook状态
     - Feature状态
+    - Strategy Context状态
     - Portfolio状态
     - Strategy状态
     - Risk状态
@@ -86,7 +87,6 @@ class SystemState:
         Paper Trading
 
         Live Trading
-
 
 
     """
@@ -153,6 +153,22 @@ class SystemState:
     # ========================================================
 
     feature_snapshot: Optional[Any] = None
+
+
+
+
+    # ========================================================
+    # Strategy Context状态
+    #
+    # 实际对象由StrategyContextRuntime生成
+    #
+    # 类型：
+    #
+    #     strategy.context.StrategyContext
+    #
+    # ========================================================
+
+    strategy_context: Optional[Any] = None
 
 
 
@@ -235,9 +251,7 @@ class SystemState:
         """
         更新最新市场事件。
 
-
         Engine每处理一个MarketEvent调用。
-
 
         """
 
@@ -294,18 +308,43 @@ class SystemState:
             FeatureEngine
 
 
-        例如：
+        """
 
-            mid_price
+        self.feature_snapshot = snapshot
 
-            micro_price
 
-            imbalance
+
+
+
+    # ========================================================
+    # 更新Strategy Context
+    # ========================================================
+
+    def set_strategy_context(
+
+        self,
+
+        context: Any
+
+    ):
+        """
+        注入最新StrategyContext。
+
+
+        来源：
+
+            StrategyContextRuntime
+
+
+
+        用途：
+
+            Strategy读取统一市场上下文。
 
 
         """
 
-        self.feature_snapshot = snapshot
+        self.strategy_context = context
 
 
 
@@ -469,6 +508,29 @@ class SystemState:
 
 
 
+        strategy_context = None
+
+
+        if self.strategy_context is not None:
+
+
+            if hasattr(
+
+                self.strategy_context,
+
+                "to_dict"
+
+            ):
+
+                strategy_context = self.strategy_context.to_dict()
+
+
+            else:
+
+                strategy_context = self.strategy_context
+
+
+
         return {
 
 
@@ -493,6 +555,12 @@ class SystemState:
             "feature":
 
                 feature,
+
+
+
+            "strategy_context":
+
+                strategy_context,
 
 
 
