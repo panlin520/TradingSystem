@@ -50,21 +50,32 @@ from strategy.context import StrategyContext
 
 class FakeOrderBook:
     """
-    最小 OrderBook Mock
+    最小 OrderBook Mock。
 
-    只提供 ContextBuilder 当前需要的接口。
+    严格对齐正式 OrderBook 接口：
+
+        best_bid()
+        best_ask()
+        bid_volume()
+        ask_volume()
     """
 
     def __init__(self):
-
-        self.best_bid = 7571000000000
-
-        self.best_ask = 7571250000000
 
         self.orders = {
             1: object(),
             2: object(),
         }
+
+
+    def best_bid(self):
+
+        return 7571000000000
+
+
+    def best_ask(self):
+
+        return 7571250000000
 
 
     def bid_volume(self):
@@ -112,19 +123,44 @@ class FakePortfolio:
 
 
 
+class FakeKillSwitch:
+    """
+    对齐正式 KillSwitch 接口：
+
+        is_triggered()
+    """
+
+    def __init__(
+        self,
+        triggered=False
+    ):
+
+        self.triggered = triggered
+
+
+    def is_triggered(self):
+
+        return self.triggered
+
+
+
+
+
 class FakeRiskManager:
+    """
+    对齐 ContextBuilder 当前依赖的正式 Risk 接口：
 
-    def snapshot(self):
+        risk_manager.kill_switch.is_triggered()
+    """
 
-        return {
+    def __init__(
+        self,
+        triggered=False
+    ):
 
-            "approved": True,
-
-            "kill_switch": False
-
-        }
-
-
+        self.kill_switch = FakeKillSwitch(
+            triggered=triggered
+        )
 
 
 
@@ -135,8 +171,6 @@ def test_context_builder_can_initialize():
     builder = ContextBuilder()
 
     assert builder is not None
-
-
 
 
 
@@ -192,7 +226,6 @@ def test_context_builder_build_strategy_context():
     )
 
 
-
     assert isinstance(
 
         context,
@@ -202,13 +235,10 @@ def test_context_builder_build_strategy_context():
     )
 
 
-
     assert context.timestamp == 100
 
 
     assert context.symbol == "ESU6"
-
-
 
 
 
@@ -237,7 +267,6 @@ def test_context_builder_orderbook_mapping():
     )
 
 
-
     assert context.orderbook.best_bid == 7571000000000
 
 
@@ -251,8 +280,6 @@ def test_context_builder_orderbook_mapping():
 
 
     assert context.orderbook.active_orders == 2
-
-
 
 
 
@@ -319,8 +346,6 @@ def test_context_builder_feature_mapping():
 
 
 
-
-
 def test_context_builder_position_mapping():
 
 
@@ -356,8 +381,6 @@ def test_context_builder_position_mapping():
 
 
 
-
-
 def test_context_builder_risk_mapping():
 
 
@@ -373,7 +396,11 @@ def test_context_builder_risk_mapping():
 
         FakePortfolio(),
 
-        FakeRiskManager(),
+        FakeRiskManager(
+
+            triggered=False
+
+        ),
 
     )
 
@@ -382,3 +409,36 @@ def test_context_builder_risk_mapping():
 
 
     assert context.risk.kill_switch is False
+
+
+
+
+
+def test_context_builder_kill_switch_mapping():
+
+
+    context = ContextBuilder().build(
+
+        FeatureSnapshot(
+
+            symbol="ESU6"
+
+        ),
+
+        FakeOrderBook(),
+
+        FakePortfolio(),
+
+        FakeRiskManager(
+
+            triggered=True
+
+        ),
+
+    )
+
+
+    assert context.risk.allowed is False
+
+
+    assert context.risk.kill_switch is True

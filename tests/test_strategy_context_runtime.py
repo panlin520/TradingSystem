@@ -24,7 +24,6 @@ Strategy Context Runtime Contract Test
     StrategyContext
 
 
-
 不测试：
 
     Engine
@@ -36,7 +35,6 @@ Strategy Context Runtime Contract Test
     Risk
 
     Execution
-
 
 
 ============================================================
@@ -60,14 +58,17 @@ from features.snapshot import FeatureSnapshot
 
 class FakeOrderBook:
     """
-    最小 OrderBook Mock
+    最小 OrderBook Mock。
+
+    严格对齐正式 OrderBook 接口：
+
+        best_bid()
+        best_ask()
+        bid_volume()
+        ask_volume()
     """
 
     def __init__(self):
-
-        self.best_bid = 7571000000000
-
-        self.best_ask = 7571250000000
 
         self.orders = {
 
@@ -78,11 +79,19 @@ class FakeOrderBook:
         }
 
 
+    def best_bid(self):
+
+        return 7571000000000
+
+
+    def best_ask(self):
+
+        return 7571250000000
+
 
     def bid_volume(self):
 
         return 120
-
 
 
     def ask_volume(self):
@@ -114,7 +123,6 @@ class FakePortfolio:
         self.position = FakePosition()
 
 
-
     def get_position(
         self,
         symbol
@@ -126,30 +134,55 @@ class FakePortfolio:
 
 
 
+class FakeKillSwitch:
+    """
+    对齐正式 KillSwitch 接口：
+
+        is_triggered()
+    """
+
+    def __init__(
+        self,
+        triggered=False
+    ):
+
+        self.triggered = triggered
+
+
+    def is_triggered(self):
+
+        return self.triggered
+
+
+
+
+
 class FakeRiskManager:
+    """
+    对齐 ContextBuilder 当前需要的 RiskManagerV2 接口：
 
-    def snapshot(self):
+        risk_manager.kill_switch.is_triggered()
+    """
 
-        return {
+    def __init__(
+        self,
+        triggered=False
+    ):
 
-            "approved": True,
-
-            "kill_switch": False,
-
-        }
+        self.kill_switch = FakeKillSwitch(
+            triggered=triggered
+        )
 
 
 
 
 
 def create_state():
-
     """
     创建完整 SystemState。
     """
 
     state = SystemState()
-
 
 
     state.feature_snapshot = FeatureSnapshot(
@@ -183,16 +216,10 @@ def create_state():
     )
 
 
-
     state.orderbook = FakeOrderBook()
 
 
     state.portfolio = FakePortfolio()
-
-
-
-    state.risk_manager = FakeRiskManager()
-
 
 
     return state
@@ -205,7 +232,6 @@ def test_strategy_context_runtime_can_initialize():
 
 
     runtime = StrategyContextRuntime()
-
 
 
     assert runtime is not None
@@ -223,13 +249,16 @@ def test_strategy_context_runtime_build_context():
     state = create_state()
 
 
+    risk_manager = FakeRiskManager()
+
 
     context = runtime.build(
 
-        state
+        state=state,
+
+        risk_manager=risk_manager,
 
     )
-
 
 
     assert isinstance(
@@ -253,13 +282,16 @@ def test_strategy_context_runtime_feature_mapping():
     state = create_state()
 
 
+    risk_manager = FakeRiskManager()
+
 
     context = runtime.build(
 
-        state
+        state=state,
+
+        risk_manager=risk_manager,
 
     )
-
 
 
     assert context.features.mid_price == 7571.125
@@ -283,12 +315,16 @@ def test_strategy_context_runtime_orderbook_mapping():
     runtime = StrategyContextRuntime()
 
 
+    risk_manager = FakeRiskManager()
+
+
     context = runtime.build(
 
-        create_state()
+        state=create_state(),
+
+        risk_manager=risk_manager,
 
     )
-
 
 
     assert context.orderbook.best_bid == 7571000000000
@@ -312,12 +348,16 @@ def test_strategy_context_runtime_position_mapping():
     runtime = StrategyContextRuntime()
 
 
+    risk_manager = FakeRiskManager()
+
+
     context = runtime.build(
 
-        create_state()
+        state=create_state(),
+
+        risk_manager=risk_manager,
 
     )
-
 
 
     assert context.position.symbol == "ESU6"
@@ -341,7 +381,6 @@ def test_strategy_context_runtime_has_feature():
     state = create_state()
 
 
-
     assert runtime.has_feature(
 
         state
@@ -359,7 +398,6 @@ def test_strategy_context_runtime_without_feature():
 
 
     state = SystemState()
-
 
 
     assert runtime.has_feature(
