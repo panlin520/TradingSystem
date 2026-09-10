@@ -60,9 +60,6 @@ from strategy.context import (
 )
 
 
-
-
-
 class ContextBuilder:
     """
     StrategyContext 构建器。
@@ -79,10 +76,7 @@ class ContextBuilder:
         Portfolio
         RiskManager
         FeatureEngine
-
     """
-
-
 
     def build(
         self,
@@ -114,16 +108,13 @@ class ContextBuilder:
             RiskManagerV2
 
 
-
         Returns
         -------
 
         StrategyContext
-
         """
 
         context = StrategyContext()
-
 
 
         # ==================================================
@@ -144,7 +135,6 @@ class ContextBuilder:
         )
 
 
-
         # ==================================================
         # OrderBook Context
         # ==================================================
@@ -152,7 +142,6 @@ class ContextBuilder:
         context.orderbook = self._build_orderbook_context(
             orderbook
         )
-
 
 
         # ==================================================
@@ -164,7 +153,6 @@ class ContextBuilder:
         )
 
 
-
         # ==================================================
         # Regime Context
         # ==================================================
@@ -172,7 +160,6 @@ class ContextBuilder:
         context.regime = self._build_regime_context(
             snapshot
         )
-
 
 
         # ==================================================
@@ -185,7 +172,6 @@ class ContextBuilder:
         )
 
 
-
         # ==================================================
         # Risk Context
         # ==================================================
@@ -195,13 +181,7 @@ class ContextBuilder:
         )
 
 
-
         return context
-
-
-
-
-
 
 
     # ======================================================
@@ -216,34 +196,33 @@ class ContextBuilder:
         ctx = OrderBookContext()
 
 
-
         if orderbook is None:
             return ctx
 
 
+        # 正式 OrderBook 接口为方法：
+        #
+        #     best_bid()
+        #     best_ask()
 
-        ctx.best_bid = getattr(
-            orderbook,
-            "best_bid",
-            None
-        )
+        if hasattr(orderbook, "best_bid"):
+
+            ctx.best_bid = orderbook.best_bid()
 
 
-        ctx.best_ask = getattr(
-            orderbook,
-            "best_ask",
-            None
-        )
+        if hasattr(orderbook, "best_ask"):
 
+            ctx.best_ask = orderbook.best_ask()
 
 
         if hasattr(orderbook, "bid_volume"):
+
             ctx.bid_size = orderbook.bid_volume()
 
 
         if hasattr(orderbook, "ask_volume"):
-            ctx.ask_size = orderbook.ask_volume()
 
+            ctx.ask_size = orderbook.ask_volume()
 
 
         if (
@@ -251,12 +230,12 @@ class ContextBuilder:
             and
             ctx.best_ask is not None
         ):
+
             ctx.spread = (
                 ctx.best_ask
                 -
                 ctx.best_bid
             )
-
 
 
         ctx.active_orders = len(
@@ -268,13 +247,7 @@ class ContextBuilder:
         )
 
 
-
         return ctx
-
-
-
-
-
 
 
     # ======================================================
@@ -289,10 +262,8 @@ class ContextBuilder:
         ctx = FeatureContext()
 
 
-
         if snapshot is None:
             return ctx
-
 
 
         fields = [
@@ -322,7 +293,6 @@ class ContextBuilder:
         ]
 
 
-
         for field in fields:
 
             if hasattr(snapshot, field):
@@ -332,51 +302,6 @@ class ContextBuilder:
                     field,
                     getattr(snapshot, field)
                 )
-
-
-
-        return ctx
-
-
-
-
-
-
-
-    # ======================================================
-    # Regime
-    # ======================================================
-
-    def _build_regime_context(
-        self,
-        snapshot
-    ):
-
-        ctx = RegimeContext()
-
-
-
-        if snapshot is None:
-            return ctx
-
-
-
-        volatility = getattr(
-            snapshot,
-            "volatility_regime",
-            "UNKNOWN"
-        )
-
-
-
-        if volatility != "UNKNOWN":
-
-            ctx.name = volatility
-
-            if volatility == "HIGH":
-
-                ctx.high_volatility = True
-
 
 
         extra = getattr(
@@ -391,13 +316,55 @@ class ContextBuilder:
             ctx.extra.update(extra)
 
 
-
         return ctx
 
 
+    # ======================================================
+    # Regime
+    # ======================================================
+
+    def _build_regime_context(
+        self,
+        snapshot
+    ):
+
+        ctx = RegimeContext()
 
 
+        if snapshot is None:
+            return ctx
 
+
+        volatility = getattr(
+            snapshot,
+            "volatility_regime",
+            "UNKNOWN"
+        )
+
+
+        if volatility != "UNKNOWN":
+
+            ctx.name = volatility
+
+
+            if volatility == "HIGH":
+
+                ctx.high_volatility = True
+
+
+        extra = getattr(
+            snapshot,
+            "extra",
+            {}
+        )
+
+
+        if isinstance(extra, dict):
+
+            ctx.extra.update(extra)
+
+
+        return ctx
 
 
     # ======================================================
@@ -413,7 +380,6 @@ class ContextBuilder:
         ctx = PositionContext()
 
 
-
         if (
             portfolio is None
             or
@@ -422,11 +388,9 @@ class ContextBuilder:
             return ctx
 
 
-
         position = portfolio.get_position(
             symbol
         )
-
 
 
         ctx.symbol = symbol
@@ -439,12 +403,17 @@ class ContextBuilder:
         )
 
 
-        ctx.side = str(
-            getattr(
-                position,
-                "side",
-                "FLAT"
-            )
+        position_side = getattr(
+            position,
+            "side",
+            "FLAT"
+        )
+
+
+        ctx.side = getattr(
+            position_side,
+            "value",
+            position_side
         )
 
 
@@ -455,13 +424,7 @@ class ContextBuilder:
         )
 
 
-
         return ctx
-
-
-
-
-
 
 
     # ======================================================
@@ -476,32 +439,34 @@ class ContextBuilder:
         ctx = RiskContext()
 
 
-
         if risk_manager is None:
             return ctx
 
 
-
-        if hasattr(
+        kill_switch = getattr(
             risk_manager,
-            "snapshot"
+            "kill_switch",
+            None
+        )
+
+
+        if (
+            kill_switch is not None
+            and
+            hasattr(
+                kill_switch,
+                "is_triggered"
+            )
         ):
 
-            state = risk_manager.snapshot()
+            ctx.kill_switch = (
+                kill_switch.is_triggered()
+            )
 
 
-            if isinstance(state, dict):
-
-                ctx.allowed = state.get(
-                    "approved",
-                    True
-                )
-
-
-                ctx.kill_switch = state.get(
-                    "kill_switch",
-                    False
-                )
+            ctx.allowed = (
+                not ctx.kill_switch
+            )
 
 
         return ctx

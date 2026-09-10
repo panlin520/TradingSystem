@@ -32,6 +32,7 @@ Strategy Context Runtime
 
     - 管理 ContextBuilder
     - 从 Runtime State 创建 StrategyContext
+    - 显式接收 RiskManager
 
 
 ============================================================
@@ -60,7 +61,6 @@ Strategy Context Runtime
 from runtime.context_builder import ContextBuilder
 
 
-
 class StrategyContextRuntime:
     """
     Strategy Context Runtime。
@@ -77,10 +77,7 @@ class StrategyContextRuntime:
         StrategyContext
 
 
-
     """
-
-
 
     def __init__(
         self,
@@ -95,31 +92,23 @@ class StrategyContextRuntime:
             context_builder:
 
                 ContextBuilder实例
-
-
-
         """
 
         if context_builder is None:
 
             context_builder = ContextBuilder()
 
-
-
         self.context_builder = context_builder
-
-
-
 
 
     # ========================================================
     # Build Context
     # ========================================================
 
-
     def build(
         self,
-        state
+        state,
+        risk_manager=None,
     ):
         """
         根据 SystemState 创建 StrategyContext。
@@ -133,18 +122,23 @@ class StrategyContextRuntime:
             SystemState
 
 
+        risk_manager:
+
+            RiskManagerV2
+
+            由 TradingEngine 显式传入。
+
+            不从 SystemState 猜测或读取不存在的
+            state.risk_manager。
+
 
         Returns
         -------
 
         StrategyContext
-
-
-
         """
 
-
-        context = self.context_builder.build(
+        return self.context_builder.build(
 
             snapshot=state.feature_snapshot,
 
@@ -152,29 +146,14 @@ class StrategyContextRuntime:
 
             portfolio=state.portfolio,
 
-            risk_manager=getattr(
-
-                state,
-
-                "risk_manager",
-
-                None
-
-            ),
+            risk_manager=risk_manager,
 
         )
-
-
-        return context
-
-
-
 
 
     # ========================================================
     # Validation
     # ========================================================
-
 
     def has_feature(
         self,
@@ -182,8 +161,6 @@ class StrategyContextRuntime:
     ):
         """
         判断是否已经存在 FeatureSnapshot。
-
-
         """
 
         return (
