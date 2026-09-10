@@ -45,6 +45,7 @@ from dataclasses import dataclass
 
 
 
+
 # ==========================================================
 # 当前 Exposure Snapshot
 # ==========================================================
@@ -66,6 +67,7 @@ class ExposureSnapshot:
 
     # 风险暴露
     exposure: float
+
 
 
 
@@ -109,6 +111,7 @@ class ProjectedExposure:
 
 
 
+
 class ExposureEngine:
 
 
@@ -135,6 +138,7 @@ class ExposureEngine:
         # update次数统计
 
         self.update_count = 0
+
 
 
 
@@ -179,6 +183,7 @@ class ExposureEngine:
 
 
 
+
     # ==================================================
     # 当前 Exposure
     # ==================================================
@@ -202,6 +207,7 @@ class ExposureEngine:
 
 
         return abs(quantity)
+
 
 
 
@@ -244,7 +250,47 @@ class ExposureEngine:
 
 
 
-        side = str(side).upper()
+        # ==================================================
+        # Side Normalization
+        # ==================================================
+        #
+        # Runtime Signal 使用 Enum：
+        #
+        #     signals.signal.SignalSide.BUY
+        #     signals.signal.SignalSide.SELL
+        #
+        # 直接执行：
+        #
+        #     str(SignalSide.BUY)
+        #
+        # 得到的是：
+        #
+        #     "SignalSide.BUY"
+        #
+        # 而不是：
+        #
+        #     "BUY"
+        #
+        # 因此必须先读取 Enum.value。
+        #
+        # 同时继续兼容原来的字符串：
+        #
+        #     "BUY"
+        #     "SELL"
+        #
+        # ==================================================
+
+        if hasattr(
+            side,
+            "value"
+        ):
+
+            side = side.value
+
+
+        side = str(
+            side
+        ).upper()
 
 
 
@@ -484,7 +530,6 @@ class ExposureEngine:
                 exposure=abs(qty)
 
             )
-
 
 
         return data

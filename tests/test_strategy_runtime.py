@@ -19,6 +19,14 @@ Strategy Runtime Contract Test
             ↓
     signals.signal.Signal
 
+同时验证：
+
+    ENTRY:
+        使用 Adapter configured quantity
+
+    EXIT:
+        使用 abs(context.position.quantity)
+
 ============================================================
 """
 
@@ -59,17 +67,44 @@ from signals.signal import (
 # ============================================================
 
 
+class FakePosition:
+
+    def __init__(
+        self,
+        side="FLAT",
+        quantity=0,
+    ):
+
+        self.side = side
+
+        self.quantity = quantity
+
+
+
+
+
 class FakeContext:
 
     def __init__(
         self,
         symbol="ESU6",
         timestamp=100,
+        position_side="FLAT",
+        position_quantity=0,
+        with_position=True,
     ):
 
         self.symbol = symbol
 
         self.timestamp = timestamp
+
+
+        if with_position:
+
+            self.position = FakePosition(
+                side=position_side,
+                quantity=position_quantity,
+            )
 
 
 
@@ -448,6 +483,8 @@ def test_strategy_runtime_converts_buy_entry():
             FakeContext(
                 symbol="ESU6",
                 timestamp=456,
+                position_side="LONG",
+                position_quantity=9,
             )
 
         )
@@ -509,7 +546,9 @@ def test_strategy_runtime_converts_sell_exit():
         FakeState(
 
             FakeContext(
-                symbol="ESU6"
+                symbol="ESU6",
+                position_side="LONG",
+                position_quantity=3,
             )
 
         )
@@ -526,6 +565,53 @@ def test_strategy_runtime_converts_sell_exit():
     assert result.side == RuntimeSignalSide.SELL
 
     assert result.signal_type == RuntimeSignalType.EXIT
+
+    assert result.quantity == 3
+
+
+
+
+
+def test_strategy_runtime_exit_flat_returns_none():
+
+    (
+        runtime,
+        _,
+        _,
+    ) = create_runtime(
+
+        composite_signal=create_trade_composite(
+
+            side=StrategySignalSide.SELL,
+
+            signal_type=StrategySignalType.EXIT,
+
+        ),
+
+        quantity=1,
+
+    )
+
+
+    runtime.start()
+
+
+    result = runtime.update(
+
+        FakeState(
+
+            FakeContext(
+                symbol="ESU6",
+                position_side="FLAT",
+                position_quantity=0,
+            )
+
+        )
+
+    )
+
+
+    assert result is None
 
 
 
