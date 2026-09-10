@@ -9,192 +9,99 @@ Execution Package
 
     管理交易执行系统。
 
-
-
 ============================================================
-
 
 支持模式：
 
-
 BACKTEST
-
-
     Historical Data
-
-          |
-
-          v
-
+        |
+        v
     Execution Simulator
 
-
-
 PAPER
-
-
     Real Market Data
-
-          |
-
-          v
-
+        |
+        v
     Simulated Execution
 
-
-
 LIVE
-
-
-    Exchange/Broker API
-
-          |
-
-          v
-
+    Exchange / Broker API
+        |
+        v
     Real Execution
 
-
-
 ============================================================
-
-
-核心模块：
-
-
-order.py
-
-
-    定义订单对象
-
-
-
-order_manager.py
-
-
-    管理订单生命周期
-
-
-
-simulator.py
-
-
-    模拟成交
-
-
-
-broker.py
-
-
-    实盘交易接口
-
-
-
-============================================================
-
 
 执行流程：
 
-
 Signal
-
-
    |
-
    v
-
-
 Order
-
-
    |
-
    v
-
-
-Order Manager
-
-
+Execution
    |
-
    v
-
-
-Execution Engine
-
-
-   |
-
-   v
-
-
 Fill
-
-
    |
-
    v
-
-
 Portfolio
 
-
-
 ============================================================
-
 
 原则：
 
+Backtest / Paper / Live 共享：
 
-Backtest / Paper / Live
+    Order 结构
+    Execution 接口
+    Risk 接口
 
-
-共享：
-
-    Order结构
-
-    Execution接口
-
-    Risk接口
-
-
-
-避免：
-
-    三套交易代码。
-
-
+避免三套交易代码。
 
 ============================================================
-
 """
 
 
-# ============================================================
-# Version
-# ============================================================
-
-__version__ = "0.1.0"
-
+__version__ = "0.2.0"
 
 
 # ============================================================
-# Public API
-#
-# 后续模块完成后导出
-#
+# Canonical Runtime API
 # ============================================================
-
 
 from .execution_engine import (
     ExecutionEngine,
     ExecutionMode,
-    Fill,
 )
+
+
+# ============================================================
+# Canonical Fill
+# ============================================================
+#
+# 当前项目中的独立 Fill 定义位于 execution/fill.py。
+# 包级导出统一从这里获取，避免 __init__.py 与
+# execution_engine.py 内部 Fill 定义产生歧义。
+# ============================================================
+
+from .fill import Fill
+
+
+# ============================================================
+# Execution Abstractions
+# ============================================================
+
+from .order_executor import OrderExecutor
+from .simulator import ExecutionSimulator
 
 
 __all__ = [
     "ExecutionEngine",
     "ExecutionMode",
     "Fill",
+    "OrderExecutor",
+    "ExecutionSimulator",
 ]
