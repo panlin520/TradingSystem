@@ -1074,7 +1074,8 @@ class TradingEngine:
         if self.strategy_context_runtime:
 
             context = self.strategy_context_runtime.build(
-                self.state
+                state=self.state,
+                risk_manager=self.risk,
             )
 
             self.state.set_strategy_context(
