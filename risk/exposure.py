@@ -1,5 +1,5 @@
 """
-risk/exposure.py  dd
+risk/exposure.py
 
 ============================================================
 Exposure Engine
