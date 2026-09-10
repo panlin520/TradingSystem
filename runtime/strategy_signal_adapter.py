@@ -29,11 +29,26 @@ Strategy Signal Adapter
 
 3. 两者不能直接混用，必须在 Adapter 边界显式转换。
 
-4. CompositeSignal 当前没有 symbol / quantity。
-   symbol 从 StrategyContext 获取。
-   quantity 必须由 Adapter 配置明确提供，不能猜测。
+4. symbol 从 StrategyContext 获取。
 
-5. CompositeSignal 当前没有可直接映射到 Runtime datetime 的时间字段。
+5. quantity 规则：
+
+    ENTRY:
+        使用 Adapter 显式配置的 quantity。
+
+    EXIT:
+        使用当前 StrategyContext.position.quantity 的绝对值，
+        确保退出整个已有仓位。
+
+6. EXIT 时：
+
+    - 缺少 position
+    - position.side == FLAT
+    - abs(position.quantity) <= 0
+
+    都返回 None。
+
+7. CompositeSignal 当前没有可直接映射到 Runtime datetime 的时间字段。
    Runtime Signal 保留自己的 datetime timestamp；
    StrategyContext.timestamp 保存到 metadata。
 
@@ -98,6 +113,14 @@ class StrategySignalAdapter:
         """
         将 CompositeSignal 转换为 Runtime Signal。
 
+        ENTRY quantity：
+
+            使用 self.quantity。
+
+        EXIT quantity：
+
+            使用 abs(context.position.quantity)。
+
         返回 None：
 
             - composite_signal 为 None
@@ -106,6 +129,9 @@ class StrategySignalAdapter:
             - NONE
             - CANCEL
             - 缺少 symbol
+            - EXIT 时缺少 position
+            - EXIT 时当前仓位为 FLAT
+            - EXIT 时 position.quantity == 0
         """
 
 
@@ -115,6 +141,11 @@ class StrategySignalAdapter:
 
 
         if not composite_signal.is_trade():
+
+            return None
+
+
+        if context is None:
 
             return None
 
@@ -147,6 +178,17 @@ class StrategySignalAdapter:
 
 
         if runtime_type is None:
+
+            return None
+
+
+        quantity = self._resolve_quantity(
+            runtime_type=runtime_type,
+            context=context,
+        )
+
+
+        if quantity is None:
 
             return None
 
@@ -196,7 +238,7 @@ class StrategySignalAdapter:
 
             side=runtime_side,
 
-            quantity=self.quantity,
+            quantity=quantity,
 
             signal_type=runtime_type,
 
@@ -209,6 +251,103 @@ class StrategySignalAdapter:
             metadata=metadata,
 
         )
+
+
+
+
+
+    # ========================================================
+    # Quantity Policy
+    # ========================================================
+
+
+    def _resolve_quantity(
+        self,
+        runtime_type,
+        context,
+    ) -> Optional[int]:
+        """
+        Runtime quantity 规则。
+
+        ENTRY:
+
+            使用 Adapter 配置数量。
+
+        EXIT:
+
+            使用当前持仓绝对数量。
+
+            LONG 3  -> 3
+            SHORT 2 -> 2
+            FLAT    -> None
+        """
+
+
+        if runtime_type == RuntimeSignalType.ENTRY:
+
+            return self.quantity
+
+
+        if runtime_type != RuntimeSignalType.EXIT:
+
+            return None
+
+
+        position = getattr(
+            context,
+            "position",
+            None,
+        )
+
+
+        if position is None:
+
+            return None
+
+
+        position_side = getattr(
+            position,
+            "side",
+            None,
+        )
+
+
+        position_side = getattr(
+            position_side,
+            "value",
+            position_side,
+        )
+
+
+        if position_side == "FLAT":
+
+            return None
+
+
+        position_quantity = getattr(
+            position,
+            "quantity",
+            0,
+        )
+
+
+        try:
+
+            quantity = abs(
+                int(position_quantity)
+            )
+
+        except (TypeError, ValueError):
+
+            return None
+
+
+        if quantity <= 0:
+
+            return None
+
+
+        return quantity
 
 
 
