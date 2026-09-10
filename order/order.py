@@ -84,12 +84,12 @@ class OrderSide(Enum):
 
         卖出 / 开空
 
-
     """
 
     BUY = "BUY"
 
     SELL = "SELL"
+
 
 
 
@@ -118,7 +118,6 @@ class OrderType(Enum):
 
         Stop订单
 
-
     """
 
     MARKET = "MARKET"
@@ -126,6 +125,7 @@ class OrderType(Enum):
     LIMIT = "LIMIT"
 
     STOP = "STOP"
+
 
 
 
@@ -174,7 +174,6 @@ class OrderStatus(Enum):
 
         拒绝
 
-
     """
 
     CREATED = "CREATED"
@@ -190,6 +189,7 @@ class OrderStatus(Enum):
     CANCELLED = "CANCELLED"
 
     REJECTED = "REJECTED"
+
 
 
 
@@ -223,7 +223,6 @@ class Order:
 
         )
 
-
     """
 
 
@@ -252,7 +251,6 @@ class Order:
 
 
     quantity: int = 0
-
 
 
     order_type: OrderType = OrderType.MARKET
@@ -294,6 +292,7 @@ class Order:
 
 
 
+
     # ========================================================
     # Metadata
     # ========================================================
@@ -329,9 +328,6 @@ class Order:
     def validate(self) -> bool:
         """
         Order合法性检查。
-
-
-
         """
 
         if not self.symbol:
@@ -451,7 +447,6 @@ class Order:
 
             - filled_quantity
             - status
-
         """
 
         if quantity <= 0:
@@ -483,7 +478,8 @@ class Order:
 
         else:
 
-            self.status = OrderStatus.PARTIALLY_FILLED
+            self.status = OrderStatus.PARTIAL_FILLED
+
 
 
 
@@ -549,8 +545,6 @@ class Order:
             replay
 
             UI
-
-
         """
 
         return {

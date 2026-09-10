@@ -91,6 +91,7 @@ from strategy.signal import (
 
 
 
+
 # ============================================================
 # Composite Result
 # ============================================================
@@ -140,6 +141,7 @@ class CompositeSignal:
 
 
 
+
     def is_trade(self):
 
         return (
@@ -164,6 +166,7 @@ class CompositeSignal:
 
 
 
+
     def is_entry(self):
 
         return (
@@ -180,6 +183,7 @@ class CompositeSignal:
 
 
 
+
     def is_exit(self):
 
         return (
@@ -191,6 +195,8 @@ class CompositeSignal:
             SignalType.EXIT
 
         )
+
+
 
 
 
@@ -228,6 +234,8 @@ class CompositeSignalEngine:
         self.min_score = (
             min_score
         )
+
+
 
 
 
@@ -323,6 +331,7 @@ class CompositeSignalEngine:
 
 
 
+
         # ----------------------------------------------------
         # Regime permission
         # ----------------------------------------------------
@@ -334,6 +343,8 @@ class CompositeSignalEngine:
             if not context.can_trade():
 
                 return CompositeSignal()
+
+
 
 
 
@@ -368,11 +379,14 @@ class CompositeSignalEngine:
 
 
 
+
         return self._merge(
 
             entries
 
         )
+
+
 
 
 
@@ -398,6 +412,7 @@ class CompositeSignalEngine:
 
 
 
+
         score = sum(
 
             s.score
@@ -405,6 +420,7 @@ class CompositeSignalEngine:
             for s in signals
 
         )
+
 
 
 
@@ -430,6 +446,7 @@ class CompositeSignalEngine:
 
 
 
+
         if confidence < self.min_confidence:
 
             return CompositeSignal()
@@ -441,6 +458,7 @@ class CompositeSignalEngine:
         if score < self.min_score:
 
             return CompositeSignal()
+
 
 
 
@@ -512,6 +530,7 @@ class CompositeSignalEngine:
 
 
 
+
         # ----------------------------------------------------
         # Category
         # ----------------------------------------------------
@@ -531,6 +550,32 @@ class CompositeSignalEngine:
 
 
 
+        # ----------------------------------------------------
+        # Signal Type
+        # ----------------------------------------------------
+        #
+        # _merge() 同时用于：
+        #
+        #     ENTRY signals
+        #
+        # 和：
+        #
+        #     EXIT signals
+        #
+        # 因此不能写死为 ENTRY。
+        #
+        # combine() 在调用 _merge() 前已经分别筛选：
+        #
+        #     exits
+        #
+        #     entries
+        #
+        # 所以这里保留输入 Signal 的真实 signal_type。
+        # ----------------------------------------------------
+
+
+        signal_type = signals[0].signal_type
+
 
 
 
@@ -543,7 +588,7 @@ class CompositeSignalEngine:
             side=side,
 
 
-            signal_type=SignalType.ENTRY,
+            signal_type=signal_type,
 
 
             category=category,
